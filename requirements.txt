@@ -1,0 +1,8 @@
+uvicorn
+fastapi
+python-multipart
+sqlalchemy
+qdrant
+pydantic
+python-dotenv
+tree-sitter-languages
