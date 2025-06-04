@@ -1,14 +1,18 @@
 from fastapi import APIRouter, Form, File, UploadFile, HTTPException
 from pydantic import BaseModel
 
-from dto.value_objects import QueryRequest, QueryResponse, UploadResponse # Keep for request/response models if defined here
+from dto.value_objects import QueryRequest, QueryResponse, UploadResponse
+from services.chat_assistant import ChatAssistantService # Keep for request/response models if defined here
 
 CHAT_ASSISTANT_ROUTER = APIRouter(prefix="/chat-assistant", tags=["Chat Assistant"])
+CHAT_ASSISTANT_SERVICE = ChatAssistantService()
+
 
 @CHAT_ASSISTANT_ROUTER.post("/upload", response_model=UploadResponse)
 async def upload_codebase(
+    language: str,
     description: str = Form(..., description="Description of the codebase (e.g., language, structure)."),
-    zip_file: UploadFile = File(..., description="A .zip file containing the codebase.")
+    zip_file: UploadFile = File(..., description="A .zip file containing the codebase."),
 ):
     """
     Accepts a zip file containing a codebase and a description.
@@ -25,7 +29,7 @@ async def upload_codebase(
         # Process the uploaded zip file
         # For now, this helper will just save and extract.
         # Later, it will include parsing, chunking, embedding, and storing.
-        extracted_files = process_uploaded_zip(zip_file, description)
+        extracted_files = await CHAT_ASSISTANT_SERVICE.process_uploaded_zip(zip_file, description)
 
         # Placeholder for actual processing
         # 1. Extract zip
@@ -37,7 +41,6 @@ async def upload_codebase(
             message="Zip file uploaded and extracted successfully. Processing will begin.",
             filename=zip_file.filename,
             description=description,
-            extracted_files=[os.path.basename(f) for f in extracted_files if os.path.isfile(f)] # Show only file names
         )
     except HTTPException as e:
         # Re-raise HTTPExceptions directly
@@ -58,19 +61,9 @@ async def query_codebase(request: QueryRequest):
     user_question = request.question
     print(f"Received query: {user_question}")
 
-    # Placeholder for actual query processing
-    # 1. Run embedding on the query (user_question)
-    # 2. Retrieve top N code chunks from the vector store
-    # 3. Format context and query for LLM
-    # 4. Run with LLM
-    # 5. Return LLM response
+    # Call the instance method on the CHAT_ASSISTANT_SERVICE instance
+    # The query_for_semantic_search method returns a string which includes
+    # the relevant chunks or a message if none are found.
+    search_result = CHAT_ASSISTANT_SERVICE.query_for_semantic_search(query=user_question)
 
-    # Dummy response for now
-    dummy_answer = f"This is a placeholder answer for your question: '{user_question}'. LLM integration is pending."
-    relevant_chunks_found = 0 # Placeholder
-
-    return QueryResponse(
-        question=user_question,
-        answer=dummy_answer,
-        relevant_chunks_found=relevant_chunks_found
-    )
+    return search_result

@@ -3,16 +3,17 @@ import zipfile
 import os
 import uuid
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException, UploadFile # Keep HTTPException if used elsewhere, UploadFile is used
 
-from db_connection.qdrant import QdrantDBManager
+from db_connection.qdrant import QdrantDBManager, COLLECTION_NAME # Import COLLECTION_NAME if needed for logging or other logic
+from dto.value_objects import ChunkResponse, QueryResponse
 from langugae_processors.laravel_processor import LaravelProcessor
 from model_interfaces.embedding_model import EmbeddingModel
 
-TEMP_DIR = "/tmp/code_uploads"
 
 class ChatAssistantService():
     """
+    Service class for handling chat assistant operations.
     Service class for handling chat assistant operations.
     This will encapsulate the logic for uploading, processing,
     and querying codebases.
@@ -36,15 +37,15 @@ class ChatAssistantService():
 
         """
         print("Started codebase Processing")
-        
-        project_path =  self.save_uploaded_zip(zip_file, description)
-        result = self.process_codebase(project_path, description)
+        project_path = "D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel"
+        # project_path =  self.save_uploaded_zip(zip_file, description)
+        result = await self.process_codebase(project_path, description)
+        return True
 
     
     
 
     async def process_codebase(self, project_path: str, description: str) -> list[str]:
-        
         self.lang_processor = LaravelProcessor(project_path)
         chunks = self.lang_processor.chunk_codebase()
         embeddings =self.embedding_model.embed_chunks(chunks)
@@ -57,6 +58,8 @@ class ChatAssistantService():
         Saves the uploaded zip file, extracts its contents.
         Returns a list of full paths to the extracted files.
         """
+        #create temp folder th root level of the project
+        TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "temp_code_uploads")
         # Ensure TEMP_DIR exists (it should be created by main.py on startup)
         if not os.path.exists(TEMP_DIR):
             os.makedirs(TEMP_DIR, exist_ok=True)
@@ -64,15 +67,15 @@ class ChatAssistantService():
 
 
         extracted_file_paths = []
-        temp_zip_path = os.path.join(TEMP_DIR, file.f=ilename)
+        temp_zip_path = os.path.join(TEMP_DIR, file.filename)
         # Ensure extraction path is unique if multiple zips with same name are uploaded (though current logic overwrites)
         extraction_base_name = os.path.splitext(file.filename)[0]
         extraction_path = os.path.join(TEMP_DIR, extraction_base_name)
 
         try:
-            # # Save the uploaded zip file
-            # with open(temp_zip_path, "wb") as buffer:
-            #     shutil.copyfileobj(file.file, buffer)
+            # Save the uploaded zip file
+            with open(temp_zip_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
             # Create extraction directory, removing if it already exists to ensure clean extraction
             if os.path.exists(extraction_path):
@@ -106,3 +109,50 @@ class ChatAssistantService():
                 file.file.close()
 
         return extraction_path
+    
+    def query_for_semantic_search(self, query: str, top_k: int = 3) -> QueryResponse:
+        """
+        Embeds the user query and searches for similar code chunks in Qdrant.
+
+        Args:
+            query (str): The user's question/query string.
+            top_k (int): The number of top similar chunks to retrieve.
+
+        Returns:
+            QueryResponse: An object containing the original question, a list of
+                           relevant chunk responses, and the count of found chunks.
+        """
+        if not query:
+            # Return a QueryResponse with empty results if query is empty
+            return QueryResponse(question=query, answer=[], relevant_chunks_found=0)
+
+        print(f"Embedding query: '{query}'")
+        query_embedding_list = self.embedding_model.embed_chunks([query])
+
+        if not query_embedding_list:
+            print("Could not generate embedding for the query.")
+            # Return a QueryResponse with empty results if embedding fails
+            return QueryResponse(question=query, answer=[], relevant_chunks_found=0)
+        
+        query_embedding = query_embedding_list[0]
+
+        print(f"Searching Qdrant for top {top_k} similar chunks...")
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=top_k)
+        
+        chunk_responses: list[ChunkResponse] = []
+        if similar_chunks_payloads:
+            for payload in similar_chunks_payloads:
+                # Assuming payload structure from LaravelProcessor:
+                # payload = {"content": "...", "metadata": {"file": "...", ...}}
+                file_name = payload.get("metadata", {}).get("file", "Unknown File")
+                chunk_content = payload.get("content", "No content available for this chunk.")
+                
+                chunk_responses.append(
+                    ChunkResponse(file_name=file_name, chunk=chunk_content)
+                )
+
+        return QueryResponse(
+            question=query,
+            answer=chunk_responses,
+            relevant_chunks_found=len(chunk_responses)
+        )

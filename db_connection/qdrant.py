@@ -13,9 +13,9 @@ load_dotenv()
 # --- Configuration ---
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333)) # Ensure port is an integer
-COLLECTION_NAME = "codebase_chunks_v1" # Suitable collection name
+COLLECTION_NAME = "codebase_chunks_v2" # Suitable collection name
 # BGE-M3 embedding dimension
-EMBEDDING_DIMENSION = 1024
+EMBEDDING_DIMENSION = 1536
 DISTANCE_METRIC = models.Distance.COSINE
 
 class QdrantDBManager:
@@ -132,18 +132,37 @@ class QdrantDBManager:
                 print(f"An unexpected error occurred while saving embeddings: {e}")
                 return False
 
+    def search_similar_chunks(
+        self,
+        embedding: List[float],
+        limit: int = 5,
+        score_threshold: float = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Searches for chunks in Qdrant that are semantically similar to the given embedding.
 
+        Args:
+            embedding (List[float]): The embedding vector of the query.
+            limit (int): The maximum number of similar chunks to retrieve.
+            score_threshold (float, optional): Minimum similarity score for a chunk to be returned.
+                                              Depends on the distance metric (e.g., for COSINE, higher is better).
 
-# --- Example Usage (optional, for testing this file directly) ---
-if __name__ == "__main__":
-    print("Running QdrantDBManager setup...")
-    try:
-        qdrant_manager = QdrantDBManager()
-        client = qdrant_manager.get_client()
-        print("\nQdrantDBManager initialized successfully.")
-
-
-    except ConnectionRefusedError:
-        print("🔴 Setup failed: Qdrant connection refused. Please ensure Qdrant is running and accessible.")
-    except Exception as e:
-        print(f"🔴 An error occurred during setup: {e}")
+        Returns:
+            List[Dict[str, Any]]: A list of payloads from the most similar chunks.
+        """
+        if not embedding:
+            print("No embedding provided for search.")
+            return []
+        try:
+            print(f"Searching in collection '{COLLECTION_NAME}' with limit {limit}...")
+            search_results = self.client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=embedding,
+                limit=limit,
+                score_threshold=score_threshold # Only include results above this score
+            )
+            print(f"Found {len(search_results)} similar chunks.")
+            return [hit.payload for hit in search_results if hit.payload is not None]
+        except Exception as e:
+            print(f"An error occurred during Qdrant search: {e}")
+            return []

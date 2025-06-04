@@ -12,9 +12,16 @@ class UploadResponse(BaseModel):
     message: str
     filename: str
     description: str
-    extracted_files: list[str]
+    # extracted_files: list[str]
+
+
+class ChunkResponse(BaseModel):
+    file_name: str
+    chunk: str
+
 
 class QueryResponse(BaseModel):
     question: str
-    answer: str # Placeholder for LLM response
+    answer: list[ChunkResponse] # Placeholder for LLM response
     relevant_chunks_found: int # Placeholde
+

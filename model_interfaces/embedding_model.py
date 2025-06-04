@@ -2,6 +2,8 @@ from sentence_transformers import SentenceTransformer
 from typing import List
 import logging
 
+import torch
+
 # Configure a logger for this module
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO) # Basic config, can be customized
@@ -19,10 +21,10 @@ class EmbeddingModel:
         Args:
             model_name (str): The name of the pre-trained sentence transformer model to use.
         """
-        self.model_name = 'BGE-2'
+        self.model_name = "BAAI/bge-code-v1"
         self.model = None
         self._load_model()
-
+ 
     def _load_model(self):
         """
         Loads the pre-trained sentence transformer model.
@@ -30,7 +32,11 @@ class EmbeddingModel:
         """
         try:
             logger.info(f"Loading embedding model: {self.model_name}...")
-            self.model = SentenceTransformer(self.model_name)
+            self.model = SentenceTransformer(
+                        self.model_name,
+                        trust_remote_code=True,
+                        model_kwargs={"torch_dtype": torch.float16},
+                    ) 
             logger.info(f"Embedding model '{self.model_name}' loaded successfully.")
         except Exception as e:
             logger.error(f"Failed to load embedding model '{self.model_name}': {e}")
