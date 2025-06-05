@@ -85,37 +85,3 @@ class EmbeddingModel:
             return -1
         return self.model.get_sentence_embedding_dimension()
 
-# Example usage (optional, for testing the class directly)
-if __name__ == '__main__':
-    try:
-        print("Initializing EmbeddingModel...")
-        # You might need to download the model the first time you run this.
-        # Ensure you have an internet connection.
-        embedder = EmbeddingModel(model_name='all-MiniLM-L6-v2') 
-        
-        print(f"Model: {embedder.model_name}")
-        print(f"Embedding dimension: {embedder.get_embedding_dimension()}")
-
-        sample_texts = [
-            "This is the first document.",
-            "This document is the second document.",
-            "And this is the third one.",
-            "Is this the first document?"
-        ]
-        
-        print(f"\nEmbedding {len(sample_texts)} sample texts...")
-        embeddings = embedder.embed_chunks(sample_texts)
-        
-        if embeddings:
-            for i, (text, emb) in enumerate(zip(sample_texts, embeddings)):
-                print(f"\nText: {text}")
-                print(f"Embedding (first 5 dims): {emb[:5]}")
-                print(f"Embedding length: {len(emb)}")
-        else:
-            print("No embeddings were generated.")
-
-    except RuntimeError as e:
-        print(f"Runtime Error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-

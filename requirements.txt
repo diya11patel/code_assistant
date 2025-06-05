@@ -2,7 +2,10 @@ uvicorn
 fastapi
 python-multipart
 sqlalchemy
-qdrant
+qdrant-client
 pydantic
-python-dotenv
-tree-sitter-languages
+dotenv
+sentence_transformers
+tree_sitter_php
+tree_sitter
+langchain_google_genai

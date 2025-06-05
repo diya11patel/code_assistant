@@ -295,19 +295,3 @@ class LaravelProcessor:
                         filepaths.append(os.path.join(root, file_name))
             print(f"Found {len(filepaths)} files to process.")
             return filepaths
-
-# Example usage (for testing this file directly)
-# if __name__ == "__main__":
-#     # Create a dummy Laravel-like project structure for testing
-#     # Ensure you have 'tree_sitter' and 'tree_sitter_languages' installed
-#     # And that the PHP grammar can be loaded.
-#     processor = LaravelProcessor(root_path="path/to/your/laravel_project")
-#     all_chunks = processor.chunk_codebase()
-#     for i, chunk_info in enumerate(all_chunks):
-#         print(f"\n--- Chunk {i+1} ---")
-#         print(f"  File: {chunk_info['metadata']['file']}")
-#         print(f"  Type: {chunk_info['metadata']['type']}")
-#         print(f"  Name: {chunk_info['metadata'].get('full_name', 'N/A')}")
-#         print(f"  Lines: {chunk_info['metadata'].get('start_line')} - {chunk_info['metadata'].get('end_line')}")
-#         # print(f"  Content:\n{chunk_info['content'][:200]}...") # Print start of content
-#     print(f"\nTotal chunks created: {len(all_chunks)}")

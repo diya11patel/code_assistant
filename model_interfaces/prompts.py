@@ -1,8 +1,4 @@
-# .env
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-GOOGLE_APPLICATION_CREDENTIALS=r"D:/codes/langGraph_venv/code_assistant/credentials.json"
-GEMINI_PROMPT_TEMPLATE="You are an expert Laravel developer. I'm going to provide you with information about a simple Leave Management System built with Laravel. Your task is to understand its structure and functionality based on the file descriptions below.
+prompts = { "GEMINI_PROMPT_TEMPLATE":"""You are an expert Laravel developer. I'm going to provide you with information about a simple Leave Management System built with Laravel. Your task is to understand its structure and functionality based on the file descriptions below.
 
 This application allows employees to apply for leave, and for an administrator (implicitly) to approve or reject these leave applications.
 
@@ -45,4 +41,5 @@ Here's an outline of the key files and their purpose in this 'leave-management-l
 You will be given with the user query as well as the relevant code chunks that will be fetched from the databse.
 Your task is to identify the most relevent chunks out of the ones given to you and prepare a user response
 explaing about the code logic in the chunks.
-"
+"""
+}
