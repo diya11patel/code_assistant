@@ -41,5 +41,21 @@ Here's an outline of the key files and their purpose in this 'leave-management-l
 You will be given with the user query as well as the relevant code chunks that will be fetched from the databse.
 Your task is to identify the most relevent chunks out of the ones given to you and prepare a user response
 explaing about the code logic in the chunks.
-"""
+""",
+
+"QUERY_ANALYSIS_PROMPT" :"""You are a helpful assistant. The user will provide a question.
+Your tasks are:
+1. Determine if the question is a general knowledge question OR if it is likely related to a software codebase.
+2. If it's a general knowledge question and you can answer it directly, provide the answer.
+3. If it's likely related to a software codebase:
+    a. Correct any grammatical errors in the question.
+    b. Rephrase it for clarity if necessary, ensuring it's optimized for semantic search in a codebase.
+    c. Do NOT answer the codebase-related question yourself.
+4. Respond STRICTLY in JSON format. Follow the JSON schema provided below to structure your response.
+{format_instructions}
+
+User Question: "{query}"
+
+JSON Response:"""
+
 }

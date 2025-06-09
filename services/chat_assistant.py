@@ -1,16 +1,14 @@
 import shutil
 import zipfile
 import os
-import uuid
-from typing import Dict, List # Added for type hinting
+from typing import Dict, List
 from fastapi import HTTPException, UploadFile # Keep HTTPException if used elsewhere, UploadFile is used
 
-from db_connection.qdrant import QdrantDBManager, COLLECTION_NAME # Import COLLECTION_NAME if needed for logging or other logic
-from dto.value_objects import ChunkResponse, CodeChunk, QueryResponse
-from langugae_processors.php_processor import LaravelProcessor
+from db_connection.qdrant import QdrantDBManager, COLLECTION_NAME 
+from dto.value_objects import ChunkResponse, CodeChunk, QueryResponse, UserQueryAnalysisType, LLMQueryResponse, CodeReference
+from langugae_processors.php_processor import LaravelProcessor 
 from model_interfaces.embedding_model import EmbeddingModel
-from model_interfaces.gemini_model import GeminiModel # Import GeminiModel
-# from dataclasses import asdict # No longer needed for Pydantic models
+from model_interfaces.gemini_model import GeminiModel
 
 
 
@@ -26,7 +24,7 @@ class ChatAssistantService():
         self.vector_store = QdrantDBManager()
         try:
             self.llm_model = GeminiModel()
-        except ValueError as e:
+        except Exception as e: 
             print(f"Failed to initialize Gemini Model: {e}. LLM features will be unavailable.")
             self.llm_model = None
         pass
@@ -151,56 +149,103 @@ class ChatAssistantService():
             QueryResponse: An object containing the original question, a list of
                            relevant chunk responses, and the count of found chunks.
         """
-        if not query:
-            # Return a QueryResponse with empty results if query is empty
-            return QueryResponse(question=query, llm_answer="Query was empty.", retrieved_chunks=[], relevant_chunks_found=0)
+        original_user_query = query # Store the original query
 
-        print(f"Embedding query: '{query}'")
-        query_embedding_list = self.embedding_model.embed_chunks([query]) # Expects list of strings
+        if not original_user_query:
+            return QueryResponse(
+                question=original_user_query, 
+                llm_answer=LLMQueryResponse(explanation="Query was empty.", code_references=[]), 
+                retrieved_chunks=[], 
+                relevant_chunks_found=0)
+
+        processed_query_for_search = original_user_query
+
+        if self.llm_model:
+            print(f"Analyzing query with LLM: '{original_user_query}'")
+            try:
+                # GeminiModel.analyze_query now returns a parsed UnifiedQueryAnalysis object
+                analysis_result = self.llm_model.analyze_query(original_user_query)
+                print(f"LLM analysis result: type='{analysis_result.type.value}', response='{analysis_result.response}'")
+
+                if analysis_result.type == UserQueryAnalysisType.GENERAL_ANSWER:
+                    print(f"LLM provided direct answer: {analysis_result.response}")
+                    return QueryResponse(
+                        question=original_user_query,
+                        llm_answer=LLMQueryResponse(explanation=analysis_result.response, code_references=[]),
+                        retrieved_chunks=[],
+                        relevant_chunks_found=0
+                    )
+                elif analysis_result.type == UserQueryAnalysisType.REFINED_QUERY:
+                    if analysis_result.response and analysis_result.response.strip():
+                        processed_query_for_search = analysis_result.response
+                        print(f"LLM refined query to: '{processed_query_for_search}'")
+                    else:
+                        print("LLM returned an empty refined query, using original.")
+                else:
+                    print(f"LLM analysis returned unknown type: '{analysis_result.type.value}'. Proceeding with original query.")
+
+            except Exception as e:
+                print(f"Error during LLM query analysis: {e}. Proceeding with original query.")
+        else:
+            print("LLM model not available for query pre-processing.")
+
+        # --- Semantic Search with processed_query_for_search ---
+        print(f"Embedding processed query for search: '{processed_query_for_search}'")
+        query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
 
         if not query_embedding_list:
             print("Could not generate embedding for the query.")
-            # Return a QueryResponse with empty results if embedding fails
-            return QueryResponse(question=query, llm_answer="Could not generate embedding for the query.", relevant_chunks_found=0, retrieved_chunks=[])
+            return QueryResponse(
+                question=original_user_query, 
+                llm_answer=LLMQueryResponse(explanation="Could not generate embedding for the query.", code_references=[]), 
+                relevant_chunks_found=0, 
+                retrieved_chunks=[])
         
         query_embedding = query_embedding_list[0]
 
-        print(f"Searching Qdrant for top {top_k} similar chunks...")
+        print(f"Searching Qdrant for top {top_k} similar chunks based on: '{processed_query_for_search}'")
         similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=top_k)
         
         retrieved_chunk_responses: List[ChunkResponse] = []
-        code_chunks: List[Dict[str, str]] = []
+        code_chunks_for_llm: List[Dict[str, str]] = []
 
         if similar_chunks_payloads:
             for payload in similar_chunks_payloads:
-                # The payload is the dictionary form of CodeChunk
                 file_name = payload.get("file_path", "Unknown")
                 chunk_content = payload.get("content", "No content available for this chunk.")
                 
                 retrieved_chunk_responses.append(
                     ChunkResponse(file_name=file_name, chunk=chunk_content)
                 )
-                code_chunks.append({
+                code_chunks_for_llm.append({
                     "file_path": file_name,
                     "content": chunk_content
                 })
         
-        llm_generated_answer = "Could not generate an answer using the LLM."
-        if self.llm_model and code_chunks:
-            try:
-                print(f"Sending query and {len(code_chunks)} chunks to LLM...")
-                llm_generated_answer = self.llm_model.generate_response(user_query=query, context_chunks=code_chunks)
-            except Exception as e:
-                print(f"Error during LLM response generation: {e}")
-                llm_generated_answer = f"Error generating LLM response: {e}"
-        elif not self.llm_model:
-            llm_generated_answer = "LLM model is not available."
-        elif not code_chunks:
-            llm_generated_answer = "No relevant code chunks found to provide context to the LLM."
+        # --- Generate Final Answer using LLM with context (if any) ---
+        final_llm_answer: LLMQueryResponse # Type hint
+        if self.llm_model:
+            if code_chunks_for_llm: # If chunks were found
+                print(f"Sending original query {original_user_query} and {len(code_chunks_for_llm)} chunks to LLM for final answer...")
+                final_llm_answer = self.llm_model.generate_response(user_query=original_user_query, context_chunks=code_chunks_for_llm)
+            else: # No relevant chunks found after search
+                print(f"No relevant chunks found. Sending original query {original_user_query} to LLM without specific context chunks.")
+                final_llm_answer = self.llm_model.generate_response(user_query=original_user_query, context_chunks=[])
+        elif not self.llm_model: # LLM model was never available
+            final_llm_answer = LLMQueryResponse(
+                explanation="LLM model is not available to generate an answer.",
+                code_references=[]
+            )
+        else: # Should not be reached if logic is correct, but as a fallback
+            final_llm_answer = LLMQueryResponse(
+                explanation="Could not generate an answer using the LLM due to an unexpected state.",
+                code_references=[]
+            )
+        
 
         return QueryResponse(
-            question=query,
-            llm_answer=llm_generated_answer,
+            question=original_user_query, # Always return the original question
+            llm_answer=final_llm_answer,
             retrieved_chunks=retrieved_chunk_responses,
             relevant_chunks_found=len(retrieved_chunk_responses)
         )
