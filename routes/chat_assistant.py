@@ -67,3 +67,33 @@ async def query_codebase(request: QueryRequest):
     search_result = CHAT_ASSISTANT_SERVICE.query_for_semantic_search(query=user_question)
 
     return search_result
+
+
+
+
+@CHAT_ASSISTANT_ROUTER.post("/update-code")
+async def update_code_endpoint(
+        request: QueryRequest,
+    ): # Add return type hint
+        """
+        Endpoint to suggest and apply code changes based on a user query.
+        This is a PoC endpoint that skips LLM query analysis and directly
+        attempts to generate and apply a diff.
+
+        Expects a JSON body with:
+        {
+            "query": "string"
+        }
+
+        Returns a JSON response indicating the status of the update attempt,
+        the generated diff, and the results for each file.
+        """
+        try:
+            # Call the new service method
+            result = CHAT_ASSISTANT_SERVICE.suggest_and_apply_code_update(request.question)
+            return result
+        except Exception as e:
+            # Catching broad Exception here for PoC simplicity, refine later
+            print(f"Error in update_code_endpoint: {e}")
+            # Return a structured error response
+            raise HTTPException(status_code=500, detail={"status": "error", "message": f"An unexpected error occurred during code update process: {e}"})

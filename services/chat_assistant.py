@@ -1,7 +1,9 @@
+import io
 import shutil
+import subprocess
 import zipfile
 import os
-from typing import Dict, List
+from typing import Any, Dict, List
 from fastapi import HTTPException, UploadFile # Keep HTTPException if used elsewhere, UploadFile is used
 
 from db_connection.qdrant import QdrantDBManager, COLLECTION_NAME 
@@ -10,7 +12,9 @@ from langugae_processors.php_processor import LaravelProcessor
 from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 
-
+import patch
+from unidiff import PatchSet
+from typing import List, Dict, Any
 
 class ChatAssistantService():
     """
@@ -249,3 +253,231 @@ class ChatAssistantService():
             retrieved_chunks=retrieved_chunk_responses,
             relevant_chunks_found=len(retrieved_chunk_responses)
         )
+    
+
+    def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
+        """
+        PoC method to suggest and apply code changes via diff.
+        Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
+        """
+        self.current_project_path='D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel'
+        if not self.current_project_path:
+            return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
+
+        # 1. Perform Semantic Search
+        processed_query_for_search = query # Skip analysis for PoC
+        try:
+            query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
+        except Exception as e:
+             return {"status": "error", "message": f"Error generating embedding for the query: {e}"}
+
+        if not query_embedding_list:
+            return {"status": "error", "message": "Could not generate embedding for the query."}
+
+        query_embedding = query_embedding_list[0]
+        print(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) # Limit can be adjusted
+
+        if not similar_chunks_payloads:
+             return {"status": "info", "message": "No relevant code chunks found for the query. Cannot suggest changes."}
+
+        code_chunks_for_llm = [{
+            "file_path": payload.get("file_path", "Unknown"),
+            "content": payload.get("content", "No content available for this chunk.")
+        } for payload in similar_chunks_payloads]
+
+
+        try:
+            diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
+            print(f"LLM generated diff:\n{diff_output}")
+            # Basic check if LLM returned something that looks like a diff or an explanation
+            if not diff_output or diff_output.strip().startswith("#") or not any(line.startswith(('--- ', '+++ ', '@@ ')) for line in diff_output.splitlines()):
+                 return {"status": "info", "message": "LLM did not generate a valid diff.", "diff": diff_output}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Error generating diff with LLM: {e}"}
+
+        # 3. Apply the diff
+        try:
+            # Use the patch library function
+            apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
+            
+            # Check if any patch application failed or warned
+            overall_status = "success"
+            messages = ["Code changes suggested and application attempted."]
+            for res in apply_results:
+                 messages.append(f"  File {res['file_path']}: {res['status']} - {res['message']}")
+                 if res['status'] == 'error':
+                      overall_status = "error"
+                 elif res['status'] == 'warning' and overall_status != 'error':
+                      overall_status = "warning"
+
+            return {"status": overall_status, "message": "\n".join(messages), "diff": diff_output, "apply_results": apply_results}
+
+        except Exception as e:
+            # This catch is for errors *before* the patch library starts processing files
+            return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
+
+    import subprocess
+
+    def apply_diff_with_patch_command(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
+        diff_path = os.path.join(project_root, "temp_patch.diff")
+        with open(diff_path, "w", encoding="utf-8") as f:
+            f.write(diff_content)
+
+        try:
+            result = subprocess.run(
+                ["patch", "-p1", "-i", diff_path],
+                cwd=project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            if result.returncode == 0:
+                return [{"status": "success", "message": result.stdout}]
+            else:
+                return [{"status": "error", "message": result.stderr}]
+        finally:
+            os.remove(diff_path)
+
+    
+    # Define apply_diff_with_patch_lib function here
+    def apply_diff_with_patch_lib(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
+        """
+        Applies a unified diff string to files within the project root using the 'patch' library.
+        ... (function implementation as provided in the thought block above) ...
+        """
+        results = []
+        try:
+            # The patch library expects bytes or a file object
+            # Use io.StringIO to treat the string as a file
+            patch_file_like = io.StringIO(diff_content)
+            # Need to reset the stream position to the beginning after creating it
+            patch_file_like.seek(0)
+            patch_set = patch.fromfile(patch_file_like)
+
+            if not patch_set:
+                 results.append({"file_path": "N/A", "status": "error", "message": "Could not parse diff content. The diff might be empty or malformed."})
+                 return results
+
+            for p_item in patch_set: # Renamed 'p' to 'p_item' to avoid conflict with 'patch' module
+                # p_item.path is the path from the diff (e.g., 'a/app/file.php' or 'app/file.php')
+                # We need to determine the actual target path relative to project_root
+                # Assuming LLM generates paths like `a/path` and `b/path`, we strip the first component.
+                # The patch library's `apply` method takes `root` and `strip`.
+                # `strip=1` removes the 'a/' or 'b/' prefix.
+                # `root=project_root` makes the library look for the file relative to this root.
+
+                try:
+                    target_file_relative_to_diff = p_item.path # This is like 'a/app/file.php'
+                    path_components = target_file_relative_to_diff.split(os.sep)
+                    
+                    # Ensure path has at least 'a/' or 'b/' prefix and a filename
+                    if len(path_components) < 2: 
+                         results.append({"file_path": p_item.path, "status": "error", "message": f"Invalid path format in diff: {p_item.path}. Expected 'a/path/to/file' or 'b/path/to/file'."})
+                         continue
+
+                    target_file_relative_to_root = os.sep.join(path_components[1:])
+                    target_file_absolute_path = os.path.join(project_root, target_file_relative_to_root)
+
+                    if not os.path.exists(target_file_absolute_path) and not p_item.is_added_file():
+                         results.append({"file_path": p_item.path, "status": "error", "message": f"Target file for modification not found: {target_file_absolute_path}"})
+                         continue
+                    
+                    # Ensure parent directory exists for new files
+                    if p_item.is_added_file():
+                        os.makedirs(os.path.dirname(target_file_absolute_path), exist_ok=True)
+
+                    print(f"Attempting to apply patch to: {target_file_absolute_path}")
+                    success = p_item.apply(strip=1, root=project_root) 
+
+                    if success is True:
+                         results.append({"file_path": p_item.path, "status": "success", "message": "Patch applied successfully."})
+                    elif success is False: 
+                         results.append({"file_path": p_item.path, "status": "warning", "message": "Patch application failed or applied with fuzz (context lines might not have matched exactly)."})
+                    else: 
+                         results.append({"file_path": p_item.path, "status": "warning", "message": f"Patch application returned unexpected result: {success}"})
+
+                except Exception as e_apply:
+                     results.append({"file_path": p_item.path, "status": "error", "message": f"An unexpected error occurred during patch application for {p_item.path}: {e_apply}"})
+
+        except Exception as e_parse:
+            results.append({"file_path": "N/A", "status": "error", "message": f"Error parsing or processing diff content: {e_parse}"})
+
+        return results
+    
+    def apply_diff_with_unidiff(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
+        """
+        Applies a unified diff string to files within the project root using the 'unidiff' library.
+        Returns a list of results indicating success or failure for each file.
+        """
+        results = []
+
+        try:
+            patch = PatchSet(io.StringIO(diff_content))
+
+            for patched_file in patch:
+                # Strip 'a/' or 'b/' prefix if present
+                path_parts = patched_file.path.split(os.sep)
+                relative_path = os.sep.join(path_parts[1:]) if len(path_parts) > 1 and path_parts[0] in ("a", "b") else patched_file.path
+                target_path = os.path.join(project_root, relative_path)
+
+                if patched_file.is_removed_file:
+                    if os.path.exists(target_path):
+                        os.remove(target_path)
+                        results.append({"file_path": target_path, "status": "success", "message": "File removed."})
+                    else:
+                        results.append({"file_path": target_path, "status": "warning", "message": "File marked for removal not found."})
+                    continue
+
+                if not patched_file.is_added_file and not os.path.exists(target_path):
+                    results.append({"file_path": target_path, "status": "error", "message": "Original file does not exist."})
+                    continue
+
+                if patched_file.is_added_file:
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    original_lines = []
+                else:
+                    with open(target_path, "r", encoding="utf-8") as f:
+                        original_lines = f.readlines()
+
+                patched_lines = original_lines.copy()
+                line_offset = 0
+
+                for hunk in patched_file:
+                    hunk_start = hunk.source_start - 1 + line_offset
+                    hunk_len = hunk.source_length
+                    hunk_lines = patched_lines[hunk_start:hunk_start + hunk_len]
+
+                    # Rebuild patch area and compare for match
+                    matched = all(
+                        old_line.value == patch_line
+                        for old_line, patch_line in zip(
+                            [line for line in hunk if line.is_context or line.is_removed],
+                            hunk_lines
+                        )
+                    )
+
+                    if not matched:
+                        results.append({"file_path": target_path, "status": "error", "message": f"Hunk did not match context lines at line {hunk_start + 1}"})
+                        break
+
+                    # Apply hunk
+                    new_lines = []
+                    for line in hunk:
+                        if line.is_context or line.is_added:
+                            new_lines.append(line.value)
+                    patched_lines[hunk_start:hunk_start + hunk_len] = new_lines
+                    line_offset += len(new_lines) - hunk_len
+
+                else:
+                    # Write back modified file if all hunks applied
+                    with open(target_path, "w", encoding="utf-8") as f:
+                        f.writelines(patched_lines)
+                    results.append({"file_path": target_path, "status": "success", "message": "Patch applied."})
+
+        except Exception as e:
+            results.append({"file_path": "N/A", "status": "error", "message": str(e)})
+
+        return results

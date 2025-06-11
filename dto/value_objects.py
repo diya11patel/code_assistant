@@ -52,3 +52,14 @@ class UserQueryAnalysisType(Enum):
     GENERAL_ANSWER = "general_answer"
     REFINED_QUERY = "refined_query"
     ERROR = "error"
+    # CODE_UPDATE = "code_update"
+
+# class SuggestedCodeChange(BaseModel):
+#     """Represents a single suggested code modification by the LLM."""
+#     file_path: str = Field(..., description="The target file path for the suggested change (e.g., 'app/Http/Controllers/MyController.php').")
+#     description: str = Field(..., description="A brief explanation from the LLM about what this specific change aims to achieve.")
+#     suggested_code_snippet: str = Field(..., description="The actual new code snippet or the modified version of existing code.")
+#     # Optional future enhancements:
+#     # action_type: Literal["add_new_code", "replace_block", "modify_lines"]
+#     # target_start_line: Optional[int]
+#     # target_end_line: Optional[int]

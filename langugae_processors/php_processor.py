@@ -61,7 +61,7 @@ class LaravelProcessor:
         self._analyze_bootstrap_app(laravel_path / "bootstrap/app.php")
         self._analyze_public_index(laravel_path / "public/index.php")
         self._analyze_tests(laravel_path / "tests")
-
+        
         return self.chunks
 
     def _analyze_controllers(self, controllers_path: Path):
@@ -264,8 +264,8 @@ class LaravelProcessor:
                     start_line=method_node.start_point[0] + 1,
                     end_line=method_node.end_point[0] + 1,
                     content=self._get_node_text(method_node, content),
-                    metadata=self._extract_method_metadata(method_node, content),
-                    dependencies=[]
+                    metadata=self._extract_method_metadata(method_node, content), # Keep existing metadata extraction
+                    dependencies=self._extract_internal_method_calls(method_node, content) # Add internal method call dependencies
                 )
                 self.chunks.append(method_chunk)
 
@@ -393,6 +393,45 @@ class LaravelProcessor:
             dependencies.append(dep)
 
         return dependencies
+
+    def _extract_internal_method_calls(self, method_node: Node, source_code: str) -> List[str]:
+        """Extracts internal method calls (e.g., $this->foo(), self::bar()) from a method body."""
+        internal_calls = []
+        # Method body is typically a 'compound_statement' node
+        method_body = None
+        for child in method_node.children:
+            if child.type == 'compound_statement': # This is usually the { ... } block
+                method_body = child
+                break
+        
+        if not method_body:
+            return internal_calls
+
+        # Find $this->method() calls
+        member_calls = self._query_nodes(method_body, "member_call_expression")
+        for call_node in member_calls:
+            object_node = call_node.child_by_field_name("object")
+            name_node = call_node.child_by_field_name("name") # This should be an 'identifier' or 'variable_name'
+            if object_node and name_node and object_node.type == 'variable_name' and self._get_node_text(object_node, source_code) == "$this":
+                method_name_text = self._get_node_text(name_node, source_code)
+                internal_calls.append(f"self::{method_name_text}") # Standardize to self:: for instance calls
+
+        # Find self::method(), parent::method(), static::method() calls
+        scoped_calls = self._query_nodes(method_body, "scoped_call_expression")
+        for call_node in scoped_calls:
+            scope_node = call_node.child_by_field_name("scope") # e.g., 'name' node for 'self', 'parent'
+            name_node = call_node.child_by_field_name("name")   # e.g., 'identifier' for method name
+            if scope_node and name_node:
+                scope_text = self._get_node_text(scope_node, source_code)
+                # Check for self, parent, static (internal) OR other class names (external static)
+                # For external static calls, scope_node.type would typically be 'name'
+                if scope_text in ["self", "parent", "static"] or scope_node.type == 'name':
+                    method_name_text = self._get_node_text(name_node, source_code)
+                    # If it's not self, parent, or static, it's an external static call
+                    # We keep the full scope_text::method_name_text format
+                    internal_calls.append(f"{scope_text}::{method_name_text}")
+        
+        return list(set(internal_calls)) # Remove duplicates
 
     def _find_route_definitions(self, root_node: Node, content: str) -> List[Dict]:
         """Find Route:: method calls"""
