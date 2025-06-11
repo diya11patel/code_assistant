@@ -42,10 +42,25 @@ class LaravelProcessor:
         self._analyze_models(laravel_path / "app/Models")
         self._analyze_routes(laravel_path / "routes")
         self._analyze_migrations(laravel_path / "database/migrations")
+        self._analyze_seeders(laravel_path / "database/seeders")
+        self._analyze_factories(laravel_path / "database/factories")
         self._analyze_views(laravel_path / "resources/views")
         self._analyze_middleware(laravel_path / "app/Http/Middleware")
+        self._analyze_requests(laravel_path / "app/Http/Requests")
         self._analyze_services(laravel_path / "app/Services")
         self._analyze_config(laravel_path / "config")
+        self._analyze_providers(laravel_path / "app/Providers")
+        self._analyze_commands(laravel_path / "app/Console/Commands")
+        self._analyze_events(laravel_path / "app/Events")
+        self._analyze_listeners(laravel_path / "app/Listeners")
+        self._analyze_jobs(laravel_path / "app/Jobs")
+        self._analyze_notifications(laravel_path / "app/Notifications")
+        self._analyze_rules(laravel_path / "app/Rules")
+        self._analyze_exceptions_handler(laravel_path / "app/Exceptions/Handler.php")
+        self._analyze_custom_helpers(laravel_path / "app/Helpers") # Assuming a common custom location
+        self._analyze_bootstrap_app(laravel_path / "bootstrap/app.php")
+        self._analyze_public_index(laravel_path / "public/index.php")
+        self._analyze_tests(laravel_path / "tests")
 
         return self.chunks
 
@@ -73,6 +88,20 @@ class LaravelProcessor:
         for php_file in routes_path.glob("*.php"):
             self._parse_route_file(php_file)
 
+    def _analyze_seeders(self, seeders_path: Path):
+        """Analyze database seeders"""
+        if not seeders_path.exists():
+            return
+        for php_file in seeders_path.rglob("*.php"): # rglob for nested seeders
+            self._parse_php_file(php_file, "seeder")
+
+    def _analyze_factories(self, factories_path: Path):
+        """Analyze model factories"""
+        if not factories_path.exists():
+            return
+        for php_file in factories_path.rglob("*.php"): # rglob for nested factories
+            self._parse_php_file(php_file, "factory")
+
     def _analyze_migrations(self, migrations_path: Path):
         """Analyze database migrations"""
         if not migrations_path.exists():
@@ -97,6 +126,14 @@ class LaravelProcessor:
         for php_file in middleware_path.rglob("*.php"):
             self._parse_php_file(php_file, "middleware")
 
+    def _analyze_requests(self, requests_path: Path):
+        """Analyze form request validation classes"""
+        if not requests_path.exists():
+            return
+
+        for php_file in requests_path.rglob("*.php"):
+            self._parse_php_file(php_file, "form_request")
+
     def _analyze_services(self, services_path: Path):
         """Analyze service classes"""
         if not services_path.exists():
@@ -112,6 +149,83 @@ class LaravelProcessor:
 
         for php_file in config_path.glob("*.php"):
             self._parse_php_file(php_file, "config")
+
+    def _analyze_providers(self, providers_path: Path):
+        """Analyze service providers"""
+        if not providers_path.exists():
+            return
+        for php_file in providers_path.rglob("*.php"):
+            self._parse_php_file(php_file, "provider")
+
+    def _analyze_commands(self, commands_path: Path):
+        """Analyze Artisan console commands"""
+        if not commands_path.exists():
+            return
+        for php_file in commands_path.rglob("*.php"):
+            self._parse_php_file(php_file, "command")
+
+    def _analyze_events(self, events_path: Path):
+        """Analyze event classes"""
+        if not events_path.exists():
+            return
+        for php_file in events_path.rglob("*.php"):
+            self._parse_php_file(php_file, "event")
+
+    def _analyze_listeners(self, listeners_path: Path):
+        """Analyze event listener classes"""
+        if not listeners_path.exists():
+            return
+        for php_file in listeners_path.rglob("*.php"):
+            self._parse_php_file(php_file, "listener")
+
+    def _analyze_jobs(self, jobs_path: Path):
+        """Analyze job classes"""
+        if not jobs_path.exists():
+            return
+        for php_file in jobs_path.rglob("*.php"):
+            self._parse_php_file(php_file, "job")
+
+    def _analyze_notifications(self, notifications_path: Path):
+        """Analyze notification classes"""
+        if not notifications_path.exists():
+            return
+        for php_file in notifications_path.rglob("*.php"):
+            self._parse_php_file(php_file, "notification")
+
+    def _analyze_rules(self, rules_path: Path):
+        """Analyze custom validation rules"""
+        if not rules_path.exists():
+            return
+        for php_file in rules_path.rglob("*.php"):
+            self._parse_php_file(php_file, "validation_rule")
+
+    def _analyze_exceptions_handler(self, handler_file_path: Path):
+        """Analyze the main exception handler file"""
+        if handler_file_path.exists() and handler_file_path.is_file():
+            self._parse_php_file(handler_file_path, "exception_handler")
+
+    def _analyze_custom_helpers(self, helpers_path: Path):
+        """Analyze custom helper files (if any)"""
+        if not helpers_path.exists() or not helpers_path.is_dir():
+            return
+        for php_file in helpers_path.rglob("*.php"):
+            self._parse_php_file(php_file, "helper")
+
+    def _analyze_bootstrap_app(self, bootstrap_file_path: Path):
+        if bootstrap_file_path.exists() and bootstrap_file_path.is_file():
+            self._parse_php_file(bootstrap_file_path, "bootstrap_script")
+
+    def _analyze_public_index(self, index_file_path: Path):
+        if index_file_path.exists() and index_file_path.is_file():
+            self._parse_php_file(index_file_path, "public_entry_script")
+
+    def _analyze_tests(self, tests_path: Path):
+        """Analyze PHPUnit test files"""
+        if not tests_path.exists():
+            return
+        # Tests can be in subdirectories like Unit, Feature
+        for php_file in tests_path.rglob("*.php"):
+            self._parse_php_file(php_file, "test")
 
     def _parse_php_file(self, file_path: Path, file_type: str):
         """Parse a PHP file and extract meaningful chunks"""
@@ -357,5 +471,3 @@ class LaravelProcessor:
             stats['average_chunk_size'] = sum(chunk_sizes) / len(chunk_sizes)
 
         return stats
-
-

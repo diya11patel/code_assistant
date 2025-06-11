@@ -20,6 +20,7 @@ dist/
 # Environment files
 .env
 .env.*
+credentials.json
 
 # IDE / Editor specific
 .idea/
