@@ -13,10 +13,13 @@ load_dotenv()
 # --- Configuration ---
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333)) # Ensure port is an integer
-COLLECTION_NAME = "codebase_chunks_v2" # Suitable collection name
+COLLECTION_NAME = "codebase_chunks_v7" # Suitable collection name
 # BGE-M3 embedding dimension
 EMBEDDING_DIMENSION = 1536
 DISTANCE_METRIC = models.Distance.COSINE
+
+QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.tC3ck8KOLtAanVtNu3QDjIaD8ln1R2LyrKZSyIXUYOY"
+
 
 class QdrantDBManager:
     """
@@ -34,7 +37,12 @@ class QdrantDBManager:
         """
         print(f"Attempting to connect to Qdrant at {host}:{port}...")
         try:
-            self.client = QdrantClient(host=host, port=port, timeout=20)
+            # self.client = QdrantClient(host=host, port=port, timeout=20)
+            self.client = QdrantClient(
+                url="https://3aa59a3e-1522-4fde-a5e7-6e43b1780b01.eu-west-1-0.aws.cloud.qdrant.io",
+                api_key=QDRANT_API_KEY,
+                timeout=60.0
+            )
             print("Successfully connected to Qdrant.")
             self._ensure_collection_exists()
         except Exception as e:

@@ -380,19 +380,60 @@ class LaravelProcessor:
         if params:
             param_count = len([c for c in params.children if c.type == "simple_parameter"])
             metadata["parameter_count"] = param_count
-
+            
         return metadata
-
+ 
     def _extract_dependencies(self, root_node: Node, content: str) -> List[str]:
-        """Extract use statements and dependencies"""
+        """Extract use statements and dependencies - FIXED VERSION"""
         dependencies = []
+        # Method 1: Look for namespace_use_declaration nodes
+        use_declarations = self._query_nodes(root_node, "namespace_use_declaration")
+        for use_decl in use_declarations:
+            # Get the use clause
+            use_clauses = self._query_nodes(use_decl, "namespace_use_clause")
+            for clause in use_clauses:
+                qualified_name = self._query_nodes(clause, "qualified_name")
+                if qualified_name:
+                    dep = self._get_node_text(qualified_name[0], content)
+                    if dep:
+                        dependencies.append(dep)
+    
+        # Method 2: Fallback - regex parsing for use statements
+        if not dependencies:
+            import re
+            use_patterns = [
+                r'use\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Standard use
+                r'use\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s+as\s+[A-Za-z0-9_]+\s*;',  # Use with alias
+                r'use\s+function\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Use function
+                r'use\s+const\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Use const
+            ]
+            
+            for pattern in use_patterns:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                dependencies.extend(matches)
 
-        use_statements = self._query_nodes(root_node, "use_declaration")
-        for use_stmt in use_statements:
-            dep = self._get_node_text(use_stmt, content).replace("use ", "").replace(";", "").strip()
-            dependencies.append(dep)
+        # Method 3: Additional Laravel-specific patterns
+        laravel_patterns = [
+            r'new\s+([A-Z][A-Za-z0-9_]*)',  # new ClassName()
+            r'::class',  # SomeClass::class
+            r'@extends\([\'"]([^\'"]+)[\'"]\)',  # Blade extends
+            r'@include\([\'"]([^\'"]+)[\'"]\)',  # Blade includes
+        ]
+        import re
+        
+        for pattern in laravel_patterns:
+            matches = re.findall(pattern, content)
+            dependencies.extend(matches)
 
-        return dependencies
+        # Clean up dependencies
+        cleaned_deps = []
+        for dep in dependencies:
+            dep = dep.strip().strip('\\')
+            if dep and dep not in cleaned_deps:
+                cleaned_deps.append(dep)
+
+        return cleaned_deps
+
 
     def _extract_internal_method_calls(self, method_node: Node, source_code: str) -> List[str]:
         """Extracts internal method calls (e.g., $this->foo(), self::bar()) from a method body."""
