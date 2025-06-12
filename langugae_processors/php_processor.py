@@ -7,11 +7,7 @@ import tree_sitter_php as tsphp
 # import tree_sitter_javascript as tsjs
 # import tree_sitter_html as tshtml
 from tree_sitter import Language, Parser, Node
-
 from dto.value_objects import CodeChunk
-
-
-
 
 class LaravelProcessor:
     def __init__(self):
@@ -19,7 +15,6 @@ class LaravelProcessor:
 
         # self.js_parser = Parser()
         # self.html_parser = Parser()
-
 
         # Load languages
         PHP_LANGUAGE = Language(tsphp.language_php())
@@ -249,7 +244,8 @@ class LaravelProcessor:
                 end_line=class_node.end_point[0] + 1,
                 content=self._get_node_text(class_node, content),
                 metadata=self._extract_class_metadata(class_node, content),
-                dependencies=self._extract_dependencies(tree.root_node, content)
+                import_dependencies=self._extract_dependencies(tree.root_node, content),
+                method_dependencies=[]
             )
             self.chunks.append(chunk)
 
@@ -265,7 +261,8 @@ class LaravelProcessor:
                     end_line=method_node.end_point[0] + 1,
                     content=self._get_node_text(method_node, content),
                     metadata=self._extract_method_metadata(method_node, content), # Keep existing metadata extraction
-                    dependencies=self._extract_internal_method_calls(method_node, content) # Add internal method call dependencies
+                    import_dependencies=self._extract_dependencies(tree.root_node, content),
+                    method_dependencies=self._extract_internal_method_calls(method_node, content) # Add internal method call dependencies
                 )
                 self.chunks.append(method_chunk)
 
@@ -291,7 +288,8 @@ class LaravelProcessor:
                 end_line=route_call['end_line'],
                 content=route_call['content'],
                 metadata=route_call['metadata'],
-                dependencies=[]
+                import_dependencies=[],
+                method_dependencies=[]
             )
             self.chunks.append(chunk)
 
@@ -314,7 +312,8 @@ class LaravelProcessor:
             end_line=len(content.splitlines()),
             content=content,
             metadata=self._extract_blade_metadata(content),
-            dependencies=self._extract_blade_dependencies(content)
+            import_dependencies=self._extract_blade_dependencies(content),
+            method_dependencies=[]
         )
         self.chunks.append(chunk)
 
@@ -411,14 +410,14 @@ class LaravelProcessor:
             for pattern in use_patterns:
                 matches = re.findall(pattern, content, re.IGNORECASE)
                 dependencies.extend(matches)
-
+            
         # Method 3: Additional Laravel-specific patterns
         laravel_patterns = [
             r'new\s+([A-Z][A-Za-z0-9_]*)',  # new ClassName()
             r'::class',  # SomeClass::class
             r'@extends\([\'"]([^\'"]+)[\'"]\)',  # Blade extends
             r'@include\([\'"]([^\'"]+)[\'"]\)',  # Blade includes
-        ]
+        ]   
         import re
         
         for pattern in laravel_patterns:
