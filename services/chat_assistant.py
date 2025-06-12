@@ -355,7 +355,7 @@ class ChatAssistantService():
             patch_file_like = io.StringIO(diff_content)
             # Need to reset the stream position to the beginning after creating it
             patch_file_like.seek(0)
-            patch_set = patch.fromfile(patch_file_like)
+            patch_set = PatchSet(patch_file_like)
 
             if not patch_set:
                  results.append({"file_path": "N/A", "status": "error", "message": "Could not parse diff content. The diff might be empty or malformed."})
@@ -413,11 +413,25 @@ class ChatAssistantService():
         Returns a list of results indicating success or failure for each file.
         """
         results = []
+        diff_path = os.path.join(project_root, "temp_patch.diff")
+        # with open(diff_path, "w", encoding="utf-8") as f:
+        #     f.write(diff_content)
+
+        with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
+            f.write(diff_content)
 
         try:
-            patch = PatchSet(io.StringIO(diff_content))
+            import pdb; pdb.set_trace()
+            # patch = PatchSet(io.StringIO(diff_content))
+            # patch_file_like = io.StringIO(newline)
+            # # Need to reset the stream position to the beginning after creating it
+            # patch_file_like.seek(0)
+            # patch_set = PatchSet(patch_file_like)
+            with open(diff_path, "r", encoding="utf-8") as f:
+                patch_set = PatchSet(f)
+                print("Parsed OK", patch_set)
 
-            for patched_file in patch:
+            for patched_file in patch_set:
                 # Strip 'a/' or 'b/' prefix if present
                 path_parts = patched_file.path.split(os.sep)
                 relative_path = os.sep.join(path_parts[1:]) if len(path_parts) > 1 and path_parts[0] in ("a", "b") else patched_file.path

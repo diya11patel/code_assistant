@@ -167,15 +167,17 @@ class GeminiModel:
             raise RuntimeError("Gemini model not initialized.")
         DIFF_GENERATION_PROMPT= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
             Analyze the user's request and the relevant code chunks. Determine what code needs to be added, removed, or modified.
-            Generate the output STRICTLY in the unified diff format.
+            Generate the patch file with the changes.
             Rules for the diff format:
-            - Start with `--- a/full/path/to/original/file`
-            - Follow with `+++ b/full/path/to/modified/file` (usually the same path)
+            - Start with `diff --git a/full/path/to/original/file b/full/path/to/modified/file`
+            - Follow with `--- a/full/path/to/original/file`
+            - Then `+++ b/full/path/to/modified/file`
             - Use `@@ ... @@` lines to indicate hunk headers (line numbers and counts).
             - Lines starting with `-` are removed lines.
             - Lines starting with `+` are added lines.
-            - Lines starting with ` ` (a single space) are context lines (unchanged lines shown for context). <--- ADD THIS CLARIFICATION
+            - Lines starting with ` ` (a single space) are context lines (unchanged lines shown for context).
             - Ensure the diff is syntactically correct and can be applied using a standard patch tool.
+            - When creating a Patchset using unidiff , it should not give any errors.For eg: Hunk is shorter than expected. This error comes because you atre not giving proper closing braclets for an open curly bracket.
             - If the request is unclear or cannot be fulfilled based on the context, provide an empty diff or explain why in a comment within the diff format (e.g., starting lines with `#`).
 
             ***Constraint***
@@ -190,6 +192,7 @@ class GeminiModel:
 
             Generate the unified diff below:
             """
+
         
 
 
