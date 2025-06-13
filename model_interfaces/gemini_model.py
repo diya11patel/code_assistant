@@ -147,7 +147,36 @@ class GeminiModel:
             logger.error(f"Error during LangChain Gemini response generation: {e}")
             return LLMQueryResponse(explanation=f"Error generating response: {e}", code_references=[])
         
+        
+    def generate_modified_code(self, user_query: str, context_chunks: List[Dict[str, str]]) -> str:
+        if not self.model:
+            raise RuntimeError("Gemini model not initialized.")
+        
+        context_chunks_string = ""
+        for i, chunk_info in enumerate(context_chunks):
+            context_chunks_string += f"--- Chunk {i+1} ---\n"
+            context_chunks_string += f"File: {chunk_info.get('file_path', 'N/A')}\n"
+            context_chunks_string += f"Content:\n{chunk_info.get('content', 'N/A')}\n\n"
+        
+        prompt = PromptTemplate(
+            template=gemini_prompts.FULL_CODE_MODIFICATION_PROMPT,
+            input_variables=["user_query", "context_chunks_string"],
+        )
+        full_prompt = prompt.format_prompt(
+            user_query=user_query,
+            context_chunks_string=context_chunks_string
+        ).to_string()
 
+        logger.info(f"Gemini Code Modification Prompt: {full_prompt}")
+
+        response = self.model.invoke(full_prompt)
+        logger.info(f"Gemini Code Modification Raw Output: {response.content}")
+        cleaned_response_content = response.content.strip()
+        if cleaned_response_content.startswith("```php"):
+            cleaned_response_content = cleaned_response_content[6:-3].strip()
+        elif cleaned_response_content.startswith("```"):
+            cleaned_response_content = cleaned_response_content[3:-3].strip()
+        return cleaned_response_content     
 
     def generate_code_diff(self, user_query: str, context_chunks: List[Dict[str, str]]) -> str:
         """

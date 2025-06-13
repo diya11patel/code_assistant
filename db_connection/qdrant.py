@@ -18,6 +18,7 @@ COLLECTION_NAME = "codebase_chunks_v2" # Suitable collection name
 EMBEDDING_DIMENSION = 1536
 DISTANCE_METRIC = models.Distance.COSINE
 
+QDRANT_API_KEY=f"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.QLpfRqrDVx44Fa9uagYSH76nGZ70X_-jaaH5qMmJVpU"
 
 class QdrantDBManager:
     """
@@ -35,15 +36,15 @@ class QdrantDBManager:
         """
         print(f"Attempting to connect to Qdrant at {host}:{port}...")
         try:
-            self.client = QdrantClient(host=host, port=port, timeout=20)
-            print("Successfully connected to Qdrant.")
-            self._ensure_collection_exists()
+            # self.client = QdrantClient(host=host, port=port, timeout=20)
+            # print("Successfully connected to Qdrant.")
+            # self._ensure_collection_exists()
             # for using qdrant cloud
-            # self.client = QdrantClient(
-            #     url="https://3aa59a3e-1522-4fde-a5e7-6e43b1780b01.eu-west-1-0.aws.cloud.qdrant.io",
-            #     api_key=QDRANT_API_KEY,
-            #     timeout=60.0
-            # )
+            self.client = QdrantClient(
+                url="https://3aa59a3e-1522-4fde-a5e7-6e43b1780b01.eu-west-1-0.aws.cloud.qdrant.io",
+                api_key=QDRANT_API_KEY,
+                timeout=60.0
+            )
         except Exception as e:
             print(f"An unexpected error occurred during Qdrant client initialization: {e}")
             raise

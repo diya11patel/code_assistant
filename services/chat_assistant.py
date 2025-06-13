@@ -253,14 +253,61 @@ class ChatAssistantService():
             retrieved_chunks=retrieved_chunk_responses,
             relevant_chunks_found=len(retrieved_chunk_responses)
         )
-    
+
+
+    def overwrite_chunk_in_file(self, file_path: str, start_line: int, end_line: int, new_content: str, project_root: str) -> Dict[str, Any]:
+        """
+        Overwrites a specific chunk in a file between start_line and end_line with new_content.
+
+        Args:
+            file_path (str): Relative path to the file (e.g., 'app/Http/Controllers/LeaveController.php').
+            start_line (int): Starting line number of the chunk (1-based).
+            end_line (int): Ending line number of the chunk (1-based).
+            new_content (str): The new content to write.
+            project_root (str): The root directory of the project.
+
+        Returns:
+            Dict[str, Any]: Result of the operation with status and message.
+        """
+        target_path = os.path.join(project_root, file_path)
+
+        try:
+            # Read the original file
+            import pdb;pdb.set_trace()
+            with open(target_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+
+            # Validate line numbers (convert to 0-based indexing for Python)
+            if start_line < 1 or end_line > len(lines) or start_line > end_line:
+                return {"status": "error", "message": f"Invalid line range: start_line={start_line}, end_line={end_line}, file_lines={len(lines)}"}
+
+            # Replace the chunk (start_line and end_line are 1-based, so adjust for 0-based indexing)
+            start_idx = start_line - 1
+            end_idx = end_line  # end_line is inclusive in the chunk, exclusive in slice
+            # Split new_content into lines, ensuring it ends with a newline
+            new_lines = new_content.strip().splitlines(keepends=False)
+            new_lines = [line + "\n" for line in new_lines]
+            # Adjust indentation to match the first line of the original chunk
+            original_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip())
+            new_lines = [" " * original_indent + line.lstrip() for line in new_lines]
+            # Replace the lines
+            lines[start_idx:end_idx] = new_lines
+
+            # Write the modified content back to the file
+            with open(target_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+
+            return {"status": "success", "message": f"Successfully overwrote chunk in {file_path} from line {start_line} to {end_line}"}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to overwrite chunk in {file_path}: {str(e)}"}
 
     def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
         Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
         """
-        self.current_project_path='D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel'
+        self.current_project_path='/root/code_assistant/temp_code_uploads/leave-management-laravel'
         if not self.current_project_path:
             return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
 
@@ -283,42 +330,58 @@ class ChatAssistantService():
 
         code_chunks_for_llm = [{
             "file_path": payload.get("file_path", "Unknown"),
-            "content": payload.get("content", "No content available for this chunk.")
+            "content": payload.get("content", "No content available for this chunk."),
+            "start_line": payload.get("start_line", 0),  # Extract start_line, default to 0
+            "end_line": payload.get("end_line", 0)
         } for payload in similar_chunks_payloads]
-
-
+   
+        # 2. Generate the Modified Code
         try:
-            diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
-            print(f"LLM generated diff:\n{diff_output}")
-            # Basic check if LLM returned something that looks like a diff or an explanation
-            if not diff_output or diff_output.strip().startswith("#") or not any(line.startswith(('--- ', '+++ ', '@@ ')) for line in diff_output.splitlines()):
-                 return {"status": "info", "message": "LLM did not generate a valid diff.", "diff": diff_output}
+            modified_code = self.llm_model.generate_modified_code(user_query=query, context_chunks=code_chunks_for_llm)
+            print(f"LLM generated modified code:\n{modified_code}")
+
+            # Check if the LLM returned a request for missing chunks
+            if modified_code.strip() == "Need the model chunk to validate fields.":
+                return {"status": "error", "message": "LLM requires the model chunk to proceed with modifications."}
+
+            # Basic validation to ensure the output looks like a PHP method
+            if not modified_code.strip().startswith("public function"):
+                return {"status": "error", "message": "LLM did not generate a valid PHP method.", "modified_code": modified_code}
 
         except Exception as e:
-            return {"status": "error", "message": f"Error generating diff with LLM: {e}"}
+            return {"status": "error", "message": f"Error generating modified code with LLM: {e}"}
 
-        # 3. Apply the diff
+        # 3. Apply the Modified Code by Overwriting the Chunk
+        # Assume the first chunk is the most relevant (you can improve this logic if needed)
+        
+        target_chunk = code_chunks_for_llm[0]
+        file_path = target_chunk["file_path"]
+        start_line = target_chunk["start_line"]
+        end_line = target_chunk["end_line"]
+       
+        if start_line == 0 or end_line == 0:
+            return {"status": "error", "message": "Chunk does not contain valid start_line or end_line information."}
+
         try:
-            # Use the patch library function
-            apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path)
-            # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
             
-            # Check if any patch application failed or warned
-            overall_status = "success"
-            messages = ["Code changes suggested and application attempted."]
-            for res in apply_results:
-                 messages.append(f"  File {res['file_path']}: {res['status']} - {res['message']}")
-                 if res['status'] == 'error':
-                      overall_status = "error"
-                 elif res['status'] == 'warning' and overall_status != 'error':
-                      overall_status = "warning"
+            apply_result = self.overwrite_chunk_in_file(
+                file_path=file_path,
+                start_line=start_line,
+                end_line=end_line,
+                new_content=modified_code,
+                project_root=self.current_project_path
+            )
 
-            return {"status": overall_status, "message": "\n".join(messages), "diff": diff_output, "apply_results": apply_results}
+            return {
+                "status": apply_result["status"],
+                "message": apply_result["message"],
+                "modified_code": modified_code
+            }
 
         except Exception as e:
-            # This catch is for errors *before* the patch library starts processing files
-            return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
+            return {"status": "error", "message": f"Error applying modified code: {e}", "modified_code": modified_code}
 
+        
     import subprocess
 
     def apply_diff_with_patch_command(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
