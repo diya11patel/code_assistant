@@ -44,8 +44,6 @@ class QdrantDBManager:
             #     api_key=QDRANT_API_KEY,
             #     timeout=60.0
             # )
-            print("Successfully connected to Qdrant.")
-            self._ensure_collection_exists()
         except Exception as e:
             print(f"An unexpected error occurred during Qdrant client initialization: {e}")
             raise
