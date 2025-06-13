@@ -1,8 +1,0 @@
-diff --git a/index.blade.php b/index.blade.php
---- a/index.blade.php
-+++ b/index.blade.php
-@@ -2,3 +2,3 @@
- @foreach($leaves as $leave)
-     <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>
--    <form method="POST" action="{{ route('leaves.approve', $leave->id) }}">@csrf<button>Approve</button></form>
-+    <form method="POST" action="{{ route('leaves.approve', $leave->id) }}">@csrf<button>Accept</button></form>

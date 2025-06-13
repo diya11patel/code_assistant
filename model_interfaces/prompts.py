@@ -62,7 +62,7 @@ class GeminiPrompts(BaseModel):
 
     JSON Response:"""
 
-    DIFF_GENERATION_PROMPT= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
+    DIFF_GENERATION_PROMPT: str= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
             Analyze the user's request and the relevant code chunks. Determine what code needs to be added, removed, or modified.
             Generate the patch file with the changes.
             Rules for the diff format:
