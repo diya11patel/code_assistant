@@ -18,6 +18,7 @@ COLLECTION_NAME = "codebase_chunks_v2" # Suitable collection name
 EMBEDDING_DIMENSION = 1536
 DISTANCE_METRIC = models.Distance.COSINE
 
+
 class QdrantDBManager:
     """
     Manages the connection to Qdrant and ensures the necessary collection exists.
@@ -37,6 +38,12 @@ class QdrantDBManager:
             self.client = QdrantClient(host=host, port=port, timeout=20)
             print("Successfully connected to Qdrant.")
             self._ensure_collection_exists()
+            # for using qdrant cloud
+            # self.client = QdrantClient(
+            #     url="https://3aa59a3e-1522-4fde-a5e7-6e43b1780b01.eu-west-1-0.aws.cloud.qdrant.io",
+            #     api_key=QDRANT_API_KEY,
+            #     timeout=60.0
+            # )
         except Exception as e:
             print(f"An unexpected error occurred during Qdrant client initialization: {e}")
             raise

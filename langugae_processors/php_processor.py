@@ -7,11 +7,7 @@ import tree_sitter_php as tsphp
 # import tree_sitter_javascript as tsjs
 # import tree_sitter_html as tshtml
 from tree_sitter import Language, Parser, Node
-
 from dto.value_objects import CodeChunk
-
-
-
 
 class LaravelProcessor:
     def __init__(self):
@@ -19,7 +15,6 @@ class LaravelProcessor:
 
         # self.js_parser = Parser()
         # self.html_parser = Parser()
-
 
         # Load languages
         PHP_LANGUAGE = Language(tsphp.language_php())
@@ -249,7 +244,8 @@ class LaravelProcessor:
                 end_line=class_node.end_point[0] + 1,
                 content=self._get_node_text(class_node, content),
                 metadata=self._extract_class_metadata(class_node, content),
-                dependencies=self._extract_dependencies(tree.root_node, content)
+                import_dependencies=self._extract_dependencies(tree.root_node, content),
+                method_dependencies=[]
             )
             self.chunks.append(chunk)
 
@@ -265,7 +261,8 @@ class LaravelProcessor:
                     end_line=method_node.end_point[0] + 1,
                     content=self._get_node_text(method_node, content),
                     metadata=self._extract_method_metadata(method_node, content), # Keep existing metadata extraction
-                    dependencies=self._extract_internal_method_calls(method_node, content) # Add internal method call dependencies
+                    import_dependencies=self._extract_dependencies(tree.root_node, content),
+                    method_dependencies=self._extract_internal_method_calls(method_node, content) # Add internal method call dependencies
                 )
                 self.chunks.append(method_chunk)
 
@@ -291,7 +288,9 @@ class LaravelProcessor:
                 end_line=route_call['end_line'],
                 content=route_call['content'],
                 metadata=route_call['metadata'],
-                dependencies=[]
+                import_dependencies=[],
+                method_dependencies=[]
+                #TODO: need to look into router dependencies
             )
             self.chunks.append(chunk)
 
@@ -314,7 +313,8 @@ class LaravelProcessor:
             end_line=len(content.splitlines()),
             content=content,
             metadata=self._extract_blade_metadata(content),
-            dependencies=self._extract_blade_dependencies(content)
+            import_dependencies=self._extract_blade_dependencies(content),
+            method_dependencies=[]
         )
         self.chunks.append(chunk)
 
@@ -380,19 +380,60 @@ class LaravelProcessor:
         if params:
             param_count = len([c for c in params.children if c.type == "simple_parameter"])
             metadata["parameter_count"] = param_count
-
+            
         return metadata
-
+ 
     def _extract_dependencies(self, root_node: Node, content: str) -> List[str]:
-        """Extract use statements and dependencies"""
+        """Extract use statements and dependencies - FIXED VERSION"""
         dependencies = []
+        # Method 1: Look for namespace_use_declaration nodes
+        use_declarations = self._query_nodes(root_node, "namespace_use_declaration")
+        for use_decl in use_declarations:
+            # Get the use clause
+            use_clauses = self._query_nodes(use_decl, "namespace_use_clause")
+            for clause in use_clauses:
+                qualified_name = self._query_nodes(clause, "qualified_name")
+                if qualified_name:
+                    dep = self._get_node_text(qualified_name[0], content)
+                    if dep:
+                        dependencies.append(dep)
+    
+        # Method 2: Fallback - regex parsing for use statements
+        if not dependencies:
+            import re
+            use_patterns = [
+                r'use\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Standard use
+                r'use\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s+as\s+[A-Za-z0-9_]+\s*;',  # Use with alias
+                r'use\s+function\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Use function
+                r'use\s+const\s+([\\A-Za-z0-9_]+(?:\\[A-Za-z0-9_]+)*)\s*;',  # Use const
+            ]
+            
+            for pattern in use_patterns:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                dependencies.extend(matches)
+            
+        # Method 3: Additional Laravel-specific patterns
+        laravel_patterns = [
+            r'new\s+([A-Z][A-Za-z0-9_]*)',  # new ClassName()
+            r'::class',  # SomeClass::class
+            r'@extends\([\'"]([^\'"]+)[\'"]\)',  # Blade extends
+            r'@include\([\'"]([^\'"]+)[\'"]\)',  # Blade includes
+        ]   
+        import re
+        
+        for pattern in laravel_patterns:
+            matches = re.findall(pattern, content)
+            dependencies.extend(matches)
 
-        use_statements = self._query_nodes(root_node, "use_declaration")
-        for use_stmt in use_statements:
-            dep = self._get_node_text(use_stmt, content).replace("use ", "").replace(";", "").strip()
-            dependencies.append(dep)
+        # Clean up dependencies
+        cleaned_deps = []
+        for dep in dependencies:
+            dep = dep.strip().strip('\\')
+            if dep and dep not in cleaned_deps:
+                cleaned_deps.append(dep)
 
-        return dependencies
+        return cleaned_deps
+
 
     def _extract_internal_method_calls(self, method_node: Node, source_code: str) -> List[str]:
         """Extracts internal method calls (e.g., $this->foo(), self::bar()) from a method body."""

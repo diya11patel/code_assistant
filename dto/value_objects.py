@@ -46,7 +46,8 @@ class CodeChunk(BaseModel):
     end_line: int
     content: str
     metadata: Dict[str, Any]
-    dependencies: List[str]
+    import_dependencies: List[str]
+    method_dependencies : List[str]
 
 class UserQueryAnalysisType(Enum):
     GENERAL_ANSWER = "general_answer"

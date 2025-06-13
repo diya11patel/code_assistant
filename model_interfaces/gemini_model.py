@@ -165,44 +165,14 @@ class GeminiModel:
     
         if not self.model:
             raise RuntimeError("Gemini model not initialized.")
-        DIFF_GENERATION_PROMPT= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
-            Analyze the user's request and the relevant code chunks. Determine what code needs to be added, removed, or modified.
-            Generate the patch file with the changes.
-            Rules for the diff format:
-            - Start with `diff --git a/full/path/to/original/file b/full/path/to/modified/file`
-            - Follow with `--- a/full/path/to/original/file`
-            - Then `+++ b/full/path/to/modified/file`
-            - Use `@@ ... @@` lines to indicate hunk headers (line numbers and counts).
-            - Lines starting with `-` are removed lines.
-            - Lines starting with `+` are added lines.
-            - Lines starting with ` ` (a single space) are context lines (unchanged lines shown for context).
-            - Ensure the diff is syntactically correct and can be applied using a standard patch tool.
-            - When creating a Patchset using unidiff , it should not give any errors.For eg: Hunk is shorter than expected. This error comes because you atre not giving proper closing braclets for an open curly bracket.
-            - If the request is unclear or cannot be fulfilled based on the context, provide an empty diff or explain why in a comment within the diff format (e.g., starting lines with `#`).
-
-            ***Constraint***
-            1. From the given code chunks, find the best match chunk for the user query and do the code changes.
-            2. It is possible that code changes may be required in two or more different chuks in different fils.
-            3. Provide all the relevant code changes at once.
-
-            User Request: "{user_query}"
-
-            Relevant Code Chunks:
-            {context_chunks_string}
-
-            Generate the unified diff below:
-            """
-
         
-
-
         context_chunks_string = ""
         for i, chunk_info in enumerate(context_chunks):
             context_chunks_string += f"--- Chunk {i+1} ---\n"
             context_chunks_string += f"File: {chunk_info.get('file_path', 'N/A')}\n"
             context_chunks_string += f"Content:\n{chunk_info.get('content', 'N/A')}\n\n"
         prompt = PromptTemplate(
-            template=DIFF_GENERATION_PROMPT, # Use the new diff prompt
+            template=gemini_prompts.DIFF_GENERATION_PROMPT, # Use the new diff prompt
             input_variables=["user_query", "context_chunks_string"],
         )
         full_prompt = prompt.format_prompt(
