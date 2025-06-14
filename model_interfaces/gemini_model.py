@@ -1,7 +1,7 @@
 # import google.generativeai as genai # Using LangChain's wrapper
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-import logging
+from utils.logger import LOGGER
 from typing import List, Dict 
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
@@ -11,7 +11,8 @@ from model_interfaces.pydantic_parser import QueryAnalysis # Assuming UnifiedQue
 from dto.value_objects import LLMQueryResponse, UserQueryAnalysisType
 from model_interfaces.prompts import gemini_prompts
 
-logger = logging.getLogger(__name__)
+logger = LOGGER
+logger.propagate = False
 
 class GeminiModel:
     def __init__(self, model_name: str = "gemini-1.5-flash-latest"):

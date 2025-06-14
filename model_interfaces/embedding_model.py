@@ -1,12 +1,13 @@
 from sentence_transformers import SentenceTransformer
 from typing import List
 import logging
+from utils.logger import LOGGER
 
 import torch
 
 # Configure a logger for this module
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO) # Basic config, can be customized
+logger = LOGGER
+logger.propagate = False
 
 class EmbeddingModel:
     """
@@ -84,4 +85,3 @@ class EmbeddingModel:
             logger.warning("Embedding model is not loaded. Cannot determine embedding dimension.")
             return -1
         return self.model.get_sentence_embedding_dimension()
-

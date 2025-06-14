@@ -7,7 +7,10 @@ from typing import List, Dict, Any
 from tree_sitter import Node
 from tree_sitter_languages import get_parser, get_language
 from tree_sitter import Parser
+from utils.logger import LOGGER
 
+logger = LOGGER
+logger.propagate = False
 
 class LaravelProcessor:
     def __init__(self, root_path: str):
@@ -15,9 +18,9 @@ class LaravelProcessor:
         self.supported_extensions = [".php"] # Primarily for PHP in Laravel
         try:
             self.parser = get_parser("php")
-            print("Tree-sitter PHP parser loaded successfully.")
+            logger.info("Tree-sitter PHP parser loaded successfully.")
         except Exception as e: # pylint: disable=broad-except
-            print(f"Failed to load tree-sitter PHP parser: {e}. Will attempt regex-based chunking for PHP files. Chunking quality may be significantly affected for complex files.")
+            logger.info(f"Failed to load tree-sitter PHP parser: {e}. Will attempt regex-based chunking for PHP files. Chunking quality may be significantly affected for complex files.")
             self.parser = None # Handle parser loading failure gracefully
 
     def chunk_codebase(self) -> List[Dict[str, Any]]:
@@ -31,10 +34,10 @@ class LaravelProcessor:
                         file_chunks = self.chunk_using_treesitter(full_path)
                     else:
                         # Fallback to regex-based chunking if tree-sitter parser is not available
-                        print(f"Using regex-based chunking for: {full_path}")
+                        logger.info(f"Using regex-based chunking for: {full_path}")
                         file_chunks = self.chunk_using_regex(full_path)
                     chunks.extend(file_chunks)
-        print(f"Created {len(chunks)} chunks out of the code")
+        logger.info(f"Created {len(chunks)} chunks out of the code")
         return chunks
     
     def _extract_node_text(self, node: Node, content_bytes: bytes) -> str:
@@ -111,7 +114,7 @@ class LaravelProcessor:
 
     def chunk_using_treesitter(self, file_path: str) -> List[Dict[str, Any]]:
         if not self.parser:
-            print(f"Tree-sitter parser not available for PHP. Cannot chunk file: {file_path}")
+            logger.info(f"Tree-sitter parser not available for PHP. Cannot chunk file: {file_path}")
             return []
         chunks: List[Dict[str, Any]] = []
         try:
@@ -143,9 +146,9 @@ class LaravelProcessor:
                     }
                 })
         except FileNotFoundError:
-            print(f"File not found during chunking: {file_path}")
+            logger.info(f"File not found during chunking: {file_path}")
         except Exception as e:
-            print(f"Error parsing {file_path} with tree-sitter: {e}")
+            logger.error(f"Error parsing {file_path} with tree-sitter: {e}")
         return chunks
     
     def _extract_block_with_braces(self, text_content: str, match_start_offset: int) -> tuple[str | None, int]:
@@ -185,10 +188,10 @@ class LaravelProcessor:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
         except FileNotFoundError:
-            print(f"File not found during regex chunking: {file_path}")
+            logger.info(f"File not found during regex chunking: {file_path}")
             return []
         except Exception as e:
-            print(f"Error reading file {file_path} for regex chunking: {e}")
+            logger.error(f"Error reading file {file_path} for regex chunking: {e}")
             return []
 
         if not content.strip():
@@ -283,7 +286,7 @@ class LaravelProcessor:
             }
             excluded_files = {".DS_Store", "Thumbs.db", ".phpunit.result.cache"}
 
-            print(f"Scanning for files in: {project_path}")
+            logger.info(f"Scanning for files in: {project_path}")
             for root, dirs, files in os.walk(project_path, topdown=True):
                 # Modify dirs in-place to skip excluded directories
                 dirs[:] = [d for d in dirs if d not in excluded_dirs and not d.startswith('.')]
@@ -293,5 +296,5 @@ class LaravelProcessor:
                     _, ext = os.path.splitext(file_name)
                     if ext.lower() in allowed_extensions:
                         filepaths.append(os.path.join(root, file_name))
-            print(f"Found {len(filepaths)} files to process.")
+            logger.info(f"Found {len(filepaths)} files to process.")
             return filepaths
