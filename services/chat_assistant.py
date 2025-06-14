@@ -11,6 +11,8 @@ from dto.value_objects import ChunkResponse, CodeChunk, QueryResponse, UserQuery
 from langugae_processors.php_processor import LaravelProcessor 
 from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
+from model_interfaces.prompts import gemini_prompts
+
 
 import patch
 from unidiff import PatchSet
@@ -273,7 +275,7 @@ class ChatAssistantService():
 
         try:
             # Read the original file
-            import pdb;pdb.set_trace()
+            
             with open(target_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
@@ -334,7 +336,24 @@ class ChatAssistantService():
             "start_line": payload.get("start_line", 0),  # Extract start_line, default to 0
             "end_line": payload.get("end_line", 0)
         } for payload in similar_chunks_payloads]
-   
+
+        snippet_list = "\n\n".join(
+            f"[{i}] {c['file_path']}:\n{c['content']}"
+            for i, c in enumerate(similar_chunks_payloads)
+        )
+
+        selector_prompt = gemini_prompts.CHUNK_SELECTION_PROMPT.format(
+            user_query=query,
+            snippet_list=snippet_list
+        )
+        idx_str = self.llm_model.invoke(selector_prompt).content.strip()
+        try:
+            idx = max(0, min(len(similar_chunks_payloads)-1, int(idx_str)))
+        except ValueError:
+            idx = 0
+        chunk = similar_chunks_payloads[idx]
+
+        original = chunk["content"]
         # 2. Generate the Modified Code
         try:
             modified_code = self.llm_model.generate_modified_code(user_query=query, context_chunks=code_chunks_for_llm)
@@ -353,8 +372,7 @@ class ChatAssistantService():
 
         # 3. Apply the Modified Code by Overwriting the Chunk
         # Assume the first chunk is the most relevant (you can improve this logic if needed)
-        
-        target_chunk = code_chunks_for_llm[0]
+        target_chunk = code_chunks_for_llm[idx]
         file_path = target_chunk["file_path"]
         start_line = target_chunk["start_line"]
         end_line = target_chunk["end_line"]

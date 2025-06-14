@@ -38,7 +38,16 @@ class GeminiModel:
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model '{self.model_name}': {e}")
             raise
+    def invoke(self, prompt_text: str):
+        """
+        Proxy to the underlying ChatGoogleGenerativeAI.invoke call,
+        so you can just call llm_model.invoke(...) everywhere.
+        """
+        if not hasattr(self, "model") or self.model is None:
+            raise RuntimeError("Gemini model not initialized.")
+        return self.model.invoke(prompt_text)
 
+        
     def analyze_query(self, user_query: str) -> QueryAnalysis:
         """
         Analyzes the user query for relevance, grammar, and potential for direct answering.

@@ -13,7 +13,7 @@ load_dotenv()
 # --- Configuration ---
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333)) # Ensure port is an integer
-COLLECTION_NAME = "codebase_chunks_v2" # Suitable collection name
+COLLECTION_NAME = "codebase_chunks_v3" # Suitable collection name
 # BGE-M3 embedding dimension
 EMBEDDING_DIMENSION = 1536
 DISTANCE_METRIC = models.Distance.COSINE
