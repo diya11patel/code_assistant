@@ -64,8 +64,10 @@ class GeminiPrompts(BaseModel):
 
     DIFF_GENERATION_PROMPT: str= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
             Analyze the user's request and the relevant code chunks. Determine what code needs to be added, removed, or modified.
-            Generate the patch file with the changes.
+            Generate the patch file with the changes. Provide the diff header line numbers accoridng to the chunk start and
+            end line given in the chunk detail. The diff header line number should not be excedding the chunk end line
             Rules for the diff format:
+            - Ensure to follow standard unidiff format
             - Start with `diff --git a/full/path/to/original/file b/full/path/to/modified/file`
             - Follow with `--- a/full/path/to/original/file`
             - Then `+++ b/full/path/to/modified/file`
@@ -81,6 +83,11 @@ class GeminiPrompts(BaseModel):
             1. From the given code chunks, find the best match chunk for the user query and do the code changes.
             2. It is possible that code changes may be required in two or more different chuks in different fils.
             3. Provide all the relevant code changes at once.
+            4. The diff should show the entire context (i.e., is the number of lines given in the header should matach with actualline changes),
+                 not just the lines that have changed.
+            5. Code start line and end line is given is the chunk, while creating the diff_header make sure 
+                it is correct to correspond to line numbers.
+
 
             User Request: "{user_query}"
 
@@ -89,7 +96,5 @@ class GeminiPrompts(BaseModel):
 
             Generate the unified diff below:
             """
-
-
 
 gemini_prompts = GeminiPrompts()

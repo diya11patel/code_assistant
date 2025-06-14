@@ -170,6 +170,10 @@ class GeminiModel:
         for i, chunk_info in enumerate(context_chunks):
             context_chunks_string += f"--- Chunk {i+1} ---\n"
             context_chunks_string += f"File: {chunk_info.get('file_path', 'N/A')}\n"
+            context_chunks_string += f"Type: {chunk_info.get('type', 'N/A')}\n"
+            context_chunks_string += f"Name: {chunk_info.get('name', 'N/A')}\n"
+            context_chunks_string += f"Start Line: {chunk_info.get('start_line', 'N/A')}\n"
+            context_chunks_string += f"End Line: {chunk_info.get('end_line', 'N/A')}\n"
             context_chunks_string += f"Content:\n{chunk_info.get('content', 'N/A')}\n\n"
         prompt = PromptTemplate(
             template=gemini_prompts.DIFF_GENERATION_PROMPT, # Use the new diff prompt
@@ -179,7 +183,6 @@ class GeminiModel:
             user_query=user_query,
             context_chunks_string=context_chunks_string
         ).to_string()
-
         logger.info(f"Gemini Diff Generation Prompt: {full_prompt}")
 
         response = self.model.invoke(full_prompt)
