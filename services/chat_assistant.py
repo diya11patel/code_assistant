@@ -333,52 +333,10 @@ class ChatAssistantService():
             file_type = None
 
             # Determine the file type based on its path
-            if "app/Http/Controllers" in file_path:
-                file_type = "controller"
-            elif "app/Models" in file_path:
-                file_type = "model"
-            elif "routes" in file_path:
+            if "routes" in file_path:
                 file_type = "route"
-            elif "database/seeders" in file_path:
-                file_type = "seeder"
-            elif "database/factories" in file_path:
-                file_type = "factory"
-            elif "database/migrations" in file_path:
-                file_type = "migration"
             elif "resources/views" in file_path and file_path.endswith(".blade.php"):
                 file_type = "blade_template"
-            elif "app/Http/Middleware" in file_path:
-                file_type = "middleware"
-            elif "app/Http/Requests" in file_path:
-                file_type = "form_request"
-            elif "app/Services" in file_path:
-                file_type = "service"
-            elif "config" in file_path:
-                file_type = "config"
-            elif "app/Providers" in file_path:
-                file_type = "provider"
-            elif "app/Console/Commands" in file_path:
-                file_type = "command"
-            elif "app/Events" in file_path:
-                file_type = "event"
-            elif "app/Listeners" in file_path:
-                file_type = "listener"
-            elif "app/Jobs" in file_path:
-                file_type = "job"
-            elif "app/Notifications" in file_path:
-                file_type = "notification"
-            elif "app/Rules" in file_path:
-                file_type = "validation_rule"
-            elif "app/Exceptions/Handler.php" in file_path:
-                file_type = "exception_handler"
-            elif "app/Helpers" in file_path:
-                file_type = "helper"
-            elif "bootstrap/app.php" in file_path:
-                file_type = "bootstrap_script"
-            elif "public/index.php" in file_path:
-                file_type = "public_entry_script"
-            elif "tests" in file_path:
-                file_type = "test"
             else:
                 logger.warning(f"Could not determine file type for {file_path}. Skipping Qdrant update.")
                 return {"status": "warning", "message": f"Could not determine file type for {file_path}"}
@@ -434,7 +392,7 @@ class ChatAssistantService():
         PoC method to suggest and apply code changes via diff.
         Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
         """
-        self.current_project_path='/root/code_assistant/temp_code_uploads/leave-management-laravel'
+        # self.current_project_path='/root/code_assistant/temp_code_uploads/leave-management-laravel'
         if not self.current_project_path:
             return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
 
@@ -541,7 +499,7 @@ class ChatAssistantService():
             return {"status": "error", "message": f"Error applying modified code: {e}", "modified_code": modified_code}
 
     # restored the original approach function
-    def suggest_and_apply_code_update_diff(self, query: str) -> Dict[str, Any]:
+    def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
         Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
@@ -576,12 +534,7 @@ class ChatAssistantService():
             "type": payload.get("type"),   
             "name": payload.get("name")
             } for payload in similar_chunks_payloads]
-            "content": payload.get("content", "No content available for this chunk."),
-            "start_line": payload.get("start_line"), # Ensure this is consistently available
-            "end_line": payload.get("end_line"),     # Ensure this is consistently available
-            "type": payload.get("type"),   
-            "name": payload.get("name")
-            } for payload in similar_chunks_payloads]
+            
 
         # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
         # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]

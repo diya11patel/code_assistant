@@ -60,28 +60,3 @@ class Logger:
 # Create a single logger instance for the application
 logger_instance = Logger(logger_name="MyAppLogger", level=logging.INFO)
 LOGGER = logger_instance.add_stream_handler()
-
-# --- Example Usage ---
-if __name__ == "__main__":
-    def my_function_to_log():
-        LOGGER.debug("This is a debug message from my_function_to_log.")
-        LOGGER.info("Informational message with a parameter: %s", "some_value")
-        try:
-            x = 1 / 0
-        except ZeroDivisionError:
-            LOGGER.error("An error occurred: Division by zero!", exc_info=True)
-
-    class MyClass:
-        def do_something(self):
-            LOGGER.warning("A warning from MyClass.do_something.")
-            my_variable = "test data"
-            LOGGER.info(f"Processing data: {my_variable}")
-
-    print("--- Logging from function ---")
-    my_function_to_log()
-    
-    print("\n--- Logging from class method ---")
-    my_instance = MyClass()
-    my_instance.do_something()
-
-    LOGGER.critical("This is a critical message from the main execution block.")
