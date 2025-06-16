@@ -60,8 +60,18 @@ class QdrantDBManager:
         Checks if the specified collection exists, and creates it if it doesn't.
         """
         try:
-            self.client.get_collection(collection_name=COLLECTION_NAME)
+            collection_info=self.client.get_collection(collection_name=COLLECTION_NAME)
             logger.info(f"Collection '{COLLECTION_NAME}' already exists.")
+            # Check if the file_path index exists
+            if "file_path" not in collection_info.payload_schema:
+                logger.info(f"Creating index for 'file_path' in collection '{COLLECTION_NAME}'...")
+                self.client.create_payload_index(
+                    collection_name=COLLECTION_NAME,
+                    field_name="file_path",
+                    field_schema=models.PayloadSchemaType.KEYWORD
+                )
+                logger.info(f"Index for 'file_path' created successfully in collection '{COLLECTION_NAME}'.")
+
         except UnexpectedResponse as e:
             # Qdrant client raises UnexpectedResponse with status code 404 if collection not found
             if e.status_code == 404:
@@ -72,8 +82,13 @@ class QdrantDBManager:
                         vectors_config=models.VectorParams(
                             size=EMBEDDING_DIMENSION,
                             distance=DISTANCE_METRIC
-                        )
+                        ),
+                        # Define the index for file_path during collection creation
+                        payload_schema={
+                            "file_path": models.PayloadSchemaType.KEYWORD
+                        }
                     ) 
+                    
                     logger.info(f"Collection '{COLLECTION_NAME}' created successfully with vector size {EMBEDDING_DIMENSION} and {DISTANCE_METRIC} distance.")
                 except Exception as create_exc:
                     logger.info(f" Failed to create collection '{COLLECTION_NAME}': {create_exc}")
@@ -145,7 +160,7 @@ class QdrantDBManager:
             except Exception as e:
                 logger.error(f"An unexpected error occurred while saving embeddings: {e}")
                 return False
-
+            
     def search_similar_chunks(
         self,
         embedding: List[float],
@@ -179,4 +194,69 @@ class QdrantDBManager:
             return [hit.payload for hit in search_results if hit.payload is not None]
         except Exception as e:
             logger.error(f"An error occurred during Qdrant search: {e}")
+            return []
+
+    def delete_chunks_by_file_path(self, file_path: str) -> bool:
+        """
+        Deletes all chunks associated with a given file_path from the Qdrant collection.
+
+        Args:
+            file_path (str): The file path to match chunks for deletion.
+
+        Returns:
+            bool: True if deletion was successful, False otherwise.
+        """
+        try:
+            logger.info(f"Deleting chunks for file_path: {file_path} from collection '{COLLECTION_NAME}'...")
+            # Use a filter to match chunks with the given file_path
+            self.client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=models.FilterSelector(
+                    filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="file_path",
+                                match=models.MatchValue(value=file_path)
+                            )
+                        ]
+                    )
+                )
+            )
+            logger.info(f"Successfully deleted chunks for file_path: {file_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting chunks for file_path {file_path}: {e}")
+            return False
+
+    def get_chunks_by_file_path(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves all chunks associated with a given file_path from the Qdrant collection.
+
+        Args:
+            file_path (str): The file path to match chunks for retrieval.
+
+        Returns:
+            List[Dict[str, Any]]: A list of payloads for the matching chunks.
+        """
+        try:
+            logger.info(f"Retrieving chunks for file_path: {file_path} from collection '{COLLECTION_NAME}'...")
+            search_results = self.client.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="file_path",
+                            match=models.MatchValue(value=file_path)
+                        )
+                    ]
+                ),
+                limit=1000  # Adjust limit as needed
+            )
+            # search_results is a tuple (points, next_page_offset)
+            points = search_results[0]
+            chunks = [point.payload for point in points if point.payload is not None]
+            logger.info(f"Found {len(chunks)} chunks for file_path: {file_path}")
+            return chunks
+        except Exception as e:
+            logger.error(f"Error retrieving chunks for file_path {file_path}: {e}")
             return []

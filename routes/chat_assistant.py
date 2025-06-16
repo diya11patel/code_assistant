@@ -93,7 +93,7 @@ async def update_code_endpoint(
         """
         try:
             # Call the new service method
-            result = CHAT_ASSISTANT_SERVICE.suggest_and_apply_code_update(request.question)
+            result = CHAT_ASSISTANT_SERVICE.suggest_and_apply_code_update_replace(request.question)
             return result
         except Exception as e:
             # Catching broad Exception here for PoC simplicity, refine later

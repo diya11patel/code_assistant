@@ -6,7 +6,6 @@ from typing import List, Dict
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
-
 from model_interfaces.pydantic_parser import QueryAnalysis # Assuming UnifiedQueryAnalysis is the target parsed object
 from dto.value_objects import LLMQueryResponse, UserQueryAnalysisType
 from model_interfaces.prompts import gemini_prompts
@@ -15,7 +14,7 @@ logger = LOGGER
 logger.propagate = False
 
 class GeminiModel:
-    def __init__(self, model_name: str = "gemini-1.5-flash-latest"):
+    def __init__(self, model_name: str = "gemini-1.5-pro"):
         self.model_name = model_name
         self.initial_system_prompt = gemini_prompts.GEMINI_PROMPT_TEMPLATE
         self.query_analysis_prompt = gemini_prompts.QUERY_ANALYSIS_PROMPT
@@ -39,6 +38,8 @@ class GeminiModel:
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model '{self.model_name}': {e}")
             raise
+
+        
     def invoke(self, prompt_text: str):
         """
         Proxy to the underlying ChatGoogleGenerativeAI.invoke call,

@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import zipfile
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 from fastapi import HTTPException, UploadFile # Keep HTTPException if used elsewhere, UploadFile is used
 
@@ -37,7 +38,7 @@ class ChatAssistantService():
         except Exception as e: 
             logger.info(f"Failed to initialize Gemini Model: {e}. LLM features will be unavailable.")
             self.llm_model = None
-        pass
+        self.php_processor = LaravelProcessor()  # Initialize once to reuse
 
     async def process_uploaded_zip(self, zip_file: UploadFile, description: str) -> list[str]:
         """
@@ -260,7 +261,7 @@ class ChatAssistantService():
             relevant_chunks_found=len(retrieved_chunk_responses)
         )
 
-
+    #new method for qdrant updation 
     def overwrite_chunk_in_file(self, file_path: str, start_line: int, end_line: int, new_content: str, project_root: str) -> Dict[str, Any]:
         """
         Overwrites a specific chunk in a file between start_line and end_line with new_content.
@@ -308,7 +309,125 @@ class ChatAssistantService():
         except Exception as e:
             return {"status": "error", "message": f"Failed to overwrite chunk in {file_path}: {str(e)}"}
 
-    def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
+    def update_qdrant_after_file_change(self, file_path: str, project_root: str) -> Dict[str, Any]:
+        """
+        Updates the Qdrant database with new chunks after a file has been modified.
+
+        Args:
+            file_path (str): The relative path to the modified file.
+            project_root (str): The root directory of the project.
+
+        Returns:
+            Dict[str, Any]: Result of the update operation.
+        """
+        try:
+            # Step 1: Re-analyze the modified file
+            absolute_file_path = os.path.join(project_root, file_path)
+            logger.info(f"Re-analyzing modified file: {absolute_file_path}")
+
+            # Since LaravelProcessor works on directories, we'll need to trick it into processing a single file
+            # We'll use the appropriate method based on the file type
+            file_path_obj = Path(absolute_file_path)
+            file_type = None
+
+            # Determine the file type based on its path
+            if "app/Http/Controllers" in file_path:
+                file_type = "controller"
+            elif "app/Models" in file_path:
+                file_type = "model"
+            elif "routes" in file_path:
+                file_type = "route"
+            elif "database/seeders" in file_path:
+                file_type = "seeder"
+            elif "database/factories" in file_path:
+                file_type = "factory"
+            elif "database/migrations" in file_path:
+                file_type = "migration"
+            elif "resources/views" in file_path and file_path.endswith(".blade.php"):
+                file_type = "blade_template"
+            elif "app/Http/Middleware" in file_path:
+                file_type = "middleware"
+            elif "app/Http/Requests" in file_path:
+                file_type = "form_request"
+            elif "app/Services" in file_path:
+                file_type = "service"
+            elif "config" in file_path:
+                file_type = "config"
+            elif "app/Providers" in file_path:
+                file_type = "provider"
+            elif "app/Console/Commands" in file_path:
+                file_type = "command"
+            elif "app/Events" in file_path:
+                file_type = "event"
+            elif "app/Listeners" in file_path:
+                file_type = "listener"
+            elif "app/Jobs" in file_path:
+                file_type = "job"
+            elif "app/Notifications" in file_path:
+                file_type = "notification"
+            elif "app/Rules" in file_path:
+                file_type = "validation_rule"
+            elif "app/Exceptions/Handler.php" in file_path:
+                file_type = "exception_handler"
+            elif "app/Helpers" in file_path:
+                file_type = "helper"
+            elif "bootstrap/app.php" in file_path:
+                file_type = "bootstrap_script"
+            elif "public/index.php" in file_path:
+                file_type = "public_entry_script"
+            elif "tests" in file_path:
+                file_type = "test"
+            else:
+                logger.warning(f"Could not determine file type for {file_path}. Skipping Qdrant update.")
+                return {"status": "warning", "message": f"Could not determine file type for {file_path}"}
+
+            # Clear existing chunks in the processor to avoid appending duplicates
+            self.php_processor.chunks = []
+
+            # Parse the single file
+            if file_type == "blade_template":
+                self.php_processor._parse_blade_file(file_path_obj)
+            elif file_type == "route":
+                self.php_processor._parse_route_file(file_path_obj)
+            else:
+                self.php_processor._parse_php_file(file_path_obj, file_type)
+
+            new_chunks = self.php_processor.chunks
+            logger.info(f"Generated {len(new_chunks)} new chunks for {file_path}")
+
+            if not new_chunks:
+                logger.warning(f"No new chunks generated for {file_path}. Qdrant not updated.")
+                return {"status": "warning", "message": f"No new chunks generated for {file_path}"}
+
+            # Step 2: Generate new embeddings
+            contents_to_embed = [chunk.content for chunk in new_chunks]
+            embeddings = self.embedding_model.embed_chunks(contents_to_embed)
+
+            if not embeddings or len(embeddings) != len(new_chunks):
+                logger.error(f"Embedding failed or mismatch. Expected {len(new_chunks)} embeddings, got {len(embeddings) if embeddings else 0}.")
+                return {"status": "error", "message": "Failed to generate embeddings for new chunks"}
+
+            # Step 3: Delete old chunks from Qdrant
+            success = self.vector_store.delete_chunks_by_file_path(file_path)
+            if not success:
+                logger.error(f"Failed to delete old chunks for {file_path} from Qdrant.")
+                return {"status": "error", "message": f"Failed to delete old chunks for {file_path} from Qdrant"}
+
+            # Step 4: Upsert new chunks to Qdrant
+            payloads = [chunk.model_dump() for chunk in new_chunks]
+            success = self.vector_store.save_embeddings(embeddings, payloads)
+            if not success:
+                logger.error(f"Failed to upsert new chunks for {file_path} to Qdrant.")
+                return {"status": "error", "message": f"Failed to upsert new chunks for {file_path} to Qdrant"}
+
+            logger.info(f"Successfully updated Qdrant with {len(new_chunks)} new chunks for {file_path}")
+            return {"status": "success", "message": f"Successfully updated Qdrant with {len(new_chunks)} new chunks for {file_path}"}
+
+        except Exception as e:
+            logger.error(f"Error updating Qdrant for file {file_path}: {e}")
+            return {"status": "error", "message": f"Error updating Qdrant for file {file_path}: {str(e)}"}
+
+    def suggest_and_apply_code_update_replace(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
         Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
@@ -393,17 +512,102 @@ class ChatAssistantService():
                 new_content=modified_code,
                 project_root=self.current_project_path
             )
+            if apply_result["status"] != "success":
+                return {
+                    "status": "error",
+                    "message": apply_result["message"],
+                    "modified_code": modified_code
+                }
+
+            # 4. Update Qdrant with the new chunks
+            update_result = self.update_qdrant_after_file_change(file_path, self.current_project_path)
+            if update_result["status"] != "success":
+                logger.warning(f"Qdrant update failed after applying changes: {update_result['message']}")
+                return {
+                    "status": "warning",
+                    "message": f"Code update applied, but Qdrant update failed: {update_result['message']}",
+                    "modified_code": modified_code
+                }
 
             return {
-                "status": apply_result["status"],
-                "message": apply_result["message"],
+                "status": "success",
+                "message": f"Code update applied and Qdrant updated: {apply_result['message']}",
                 "modified_code": modified_code
             }
-
+        
         except Exception as e:
             return {"status": "error", "message": f"Error applying modified code: {e}", "modified_code": modified_code}
 
-        
+    # restored the original approach function
+    def suggest_and_apply_code_update_diff(self, query: str) -> Dict[str, Any]:
+        """
+        PoC method to suggest and apply code changes via diff.
+        Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
+        """
+        self.current_project_path='D:/codes/langGraph_venv/code_assistant'
+        if not self.current_project_path:
+            return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
+
+        # 1. Perform Semantic Search
+        processed_query_for_search = query # Skip analysis for PoC
+        try:
+            query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
+        except Exception as e:
+             return {"status": "error", "message": f"Error generating embedding for the query: {e}"}
+
+        if not query_embedding_list:
+            return {"status": "error", "message": "Could not generate embedding for the query."}
+
+        query_embedding = query_embedding_list[0]
+        print(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) # Limit can be adjusted
+
+        if not similar_chunks_payloads:
+             return {"status": "info", "message": "No relevant code chunks found for the query. Cannot suggest changes."}
+
+        code_chunks_for_llm = [{
+            "file_path": payload.get("file_path", "Unknown"),
+            "content": payload.get("content", "No content available for this chunk."),
+            "start_line": payload.get("start_line"), # Ensure this is consistently available
+            "end_line": payload.get("end_line"),     # Ensure this is consistently available
+            "type": payload.get("type"),   
+            "name": payload.get("name")
+            } for payload in similar_chunks_payloads]
+
+        # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
+        try:
+            diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
+            print(f"LLM generated diff:\n{diff_output}")
+            # Basic check if LLM returned something that looks like a diff or an explanation
+            if not diff_output or diff_output.strip().startswith("#") or not any(line.startswith(('--- ', '+++ ', '@@ ')) for line in diff_output.splitlines()):
+                 return {"status": "info", "message": "LLM did not generate a valid diff.", "diff": diff_output}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Error generating diff with LLM: {e}"}
+
+        # 3. Apply the diff
+        try:
+            # Use the patch library function
+            apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
+            
+            # Check if any patch application failed or warned
+            overall_status = "success"
+            messages = ["Code changes suggested and application attempted."]
+            for res in apply_results:
+                 messages.append(f"  File {res['file_path']}: {res['status']} - {res['message']}")
+                 if res['status'] == 'error':
+                      overall_status = "error"
+                 elif res['status'] == 'warning' and overall_status != 'error':
+                      overall_status = "warning"
+
+            return {"status": overall_status, "message": "\n".join(messages), "diff": diff_output, "apply_results": apply_results}
+
+        except Exception as e:
+            # This catch is for errors *before* the patch library starts processing files
+            return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
+
     import subprocess
 
     def apply_diff_with_patch_command(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
