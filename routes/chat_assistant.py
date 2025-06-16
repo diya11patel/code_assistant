@@ -8,9 +8,6 @@ from services.chat_assistant import ChatAssistantService # Keep for request/resp
 CHAT_ASSISTANT_ROUTER = APIRouter(prefix="/chat-assistant", tags=["Chat Assistant"])
 CHAT_ASSISTANT_SERVICE = ChatAssistantService()
 
-logger = LOGGER
-logger.propagate = False
-
 @CHAT_ASSISTANT_ROUTER.post("/upload", response_model=UploadResponse)
 async def upload_codebase(
     language: str,
@@ -25,8 +22,8 @@ async def upload_codebase(
     if not zip_file.filename.endswith(".zip"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .zip file.")
     
-    logger.info(f"Received upload request for: {zip_file.filename}")
-    logger.info(f"Description: {description}")
+    LOGGER.info(f"Received upload request for: {zip_file.filename}")
+    LOGGER.info(f"Description: {description}")
 
     try:
         # Process the uploaded zip file
@@ -50,7 +47,7 @@ async def upload_codebase(
         raise e
     except Exception as e:
         # Catch any other unexpected errors during processing
-        logger.error(f"Error during upload: {e}")
+        LOGGER.error(f"Error during upload: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
@@ -62,7 +59,7 @@ async def query_codebase(request: QueryRequest):
     and use an LLM to generate a response.
     """
     user_question = request.question
-    logger.info(f"Received query: {user_question}")
+    LOGGER.info(f"Received query: {user_question}")
 
     # Call the instance method on the CHAT_ASSISTANT_SERVICE instance
     # The query_for_semantic_search method returns a string which includes
@@ -98,6 +95,6 @@ async def update_code_endpoint(
             return result
         except Exception as e:
             # Catching broad Exception here for PoC simplicity, refine later
-            logger.info(f"Error in update_code_endpoint: {e}")
+            LOGGER.info(f"Error in update_code_endpoint: {e}")
             # Return a structured error response
             raise HTTPException(status_code=500, detail={"status": "error", "message": f"An unexpected error occurred during code update process: {e}"})

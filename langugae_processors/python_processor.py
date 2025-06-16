@@ -3,9 +3,6 @@ import ast, os
 from utils.logger import LOGGER
 
 
-logger = LOGGER
-logger.propagate = False
-
 class PythonProcessor():
     def parse(self):
         self.files = []
@@ -36,5 +33,5 @@ class PythonProcessor():
                             }
                         })
             except Exception as e:
-                logger.info(f"Error parsing {file}: {e}")
+                LOGGER.info(f"Error parsing {file}: {e}")
         return chunks

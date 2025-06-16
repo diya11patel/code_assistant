@@ -10,8 +10,6 @@ from tree_sitter import Language, Parser, Node
 from dto.value_objects import CodeChunk
 from utils.logger import LOGGER
 
-logger = LOGGER
-logger.propagate = False
 
 class LaravelProcessor:
     def __init__(self):

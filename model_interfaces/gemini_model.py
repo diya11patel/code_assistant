@@ -10,9 +10,6 @@ from model_interfaces.pydantic_parser import QueryAnalysis # Assuming UnifiedQue
 from dto.value_objects import LLMQueryResponse, UserQueryAnalysisType
 from model_interfaces.prompts import gemini_prompts
 
-logger = LOGGER
-logger.propagate = False
-
 class GeminiModel:
     def __init__(self, model_name: str = "gemini-1.5-pro"):
         self.model_name = model_name
@@ -26,7 +23,7 @@ class GeminiModel:
         # self.api_key = os.getenv("GOOGLE_API_KEY") # No longer directly using API key
         # Instead, ensure GOOGLE_APPLICATION_CREDENTIALS is set in your environment
         if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-            logger.warning("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set. Authentication might fail if not configured elsewhere.")
+            LOGGER.warning("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set. Authentication might fail if not configured elsewhere.")
             # Depending on your setup, this might not be a fatal error if auth is handled by the environment
 
         try:
@@ -34,9 +31,9 @@ class GeminiModel:
             # When google_api_key is not provided, it tries to authenticate using ADC (Application Default Credentials)
             # which includes checking GOOGLE_APPLICATION_CREDENTIALS.
             self.model = ChatGoogleGenerativeAI(model=self.model_name)
-            logger.info(f"Gemini model '{self.model_name}' initialized successfully (attempting auth via ADC).")
+            LOGGER.info(f"Gemini model '{self.model_name}' initialized successfully (attempting auth via ADC).")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini model '{self.model_name}': {e}")
+            LOGGER.error(f"Failed to initialize Gemini model '{self.model_name}': {e}")
             raise
 
         
@@ -60,7 +57,7 @@ class GeminiModel:
         Returns:
             QueryAnalysis: A Pydantic model instance with the analysis result.
         """
-        logger.info(f"Gemini Analysis Prompt: {self.query_analysis_prompt}")
+        LOGGER.info(f"Gemini Analysis Prompt: {self.query_analysis_prompt}")
         format_instructions = self.query_analysis_parser.get_format_instructions()
         prompt = PromptTemplate(
             template=self.query_analysis_prompt,
@@ -68,11 +65,11 @@ class GeminiModel:
             partial_variables={"format_instructions": format_instructions}
         )
         formatted_prompt = prompt.format_prompt(query=user_query).to_string()
-        logger.info(f"Gemini Analysis Prompt: {formatted_prompt}")
+        LOGGER.info(f"Gemini Analysis Prompt: {formatted_prompt}")
 
         try:
             response_content = self.model.invoke(formatted_prompt)
-            logger.info(f"Gemini Analysis Raw Response: {response_content}")
+            LOGGER.info(f"Gemini Analysis Raw Response: {response_content}")
             cleaned_response_content: str = response_content.content.strip()
             if cleaned_response_content.startswith("```json"):
                 cleaned_response_content = cleaned_response_content[7:-3].strip()
@@ -81,7 +78,7 @@ class GeminiModel:
             
             return self.query_analysis_parser.parse(cleaned_response_content)
         except Exception as e:
-            logger.error(f"Error during LangChain Gemini query analysis: {e}")
+            LOGGER.error(f"Error during LangChain Gemini query analysis: {e}")
             return QueryAnalysis(type=UserQueryAnalysisType.ERROR, response=f"Error calling LLM or parsing for query analysis: {str(e)}")
     
     
@@ -133,7 +130,7 @@ class GeminiModel:
             {{format_instructions}}
             JSON Response:
             """
-        logger.info(f"Gemini Prompt: {full_prompt}")
+        LOGGER.info(f"Gemini Prompt: {full_prompt}")
         prompt = PromptTemplate(
             template=full_prompt,
             input_variables=["user_query", "context_chunks_string"],
@@ -143,11 +140,11 @@ class GeminiModel:
             user_query=user_query, 
             context_chunks_string=context_chunks_string
         ).to_string()
-        logger.info(f"Gemini Generate Response Prompt: {full_prompt}")
+        LOGGER.info(f"Gemini Generate Response Prompt: {full_prompt}")
         try:
             # LangChain's invoke method
             response_content = self.model.invoke(full_prompt)
-            logger.info(f"Gemini Generate Response Raw Output: {response_content}")
+            LOGGER.info(f"Gemini Generate Response Raw Output: {response_content}")
             cleaned_response_content = response_content.content.strip()
             if cleaned_response_content.startswith("```json"):
                 cleaned_response_content = cleaned_response_content[7:-3].strip()
@@ -155,7 +152,7 @@ class GeminiModel:
                  cleaned_response_content = cleaned_response_content[3:-3].strip()
             return self.query_response_parser.parse(cleaned_response_content)
         except Exception as e:
-            logger.error(f"Error during LangChain Gemini response generation: {e}")
+            LOGGER.error(f"Error during LangChain Gemini response generation: {e}")
             return LLMQueryResponse(explanation=f"Error generating response: {e}", code_references=[])
         
         
@@ -178,10 +175,10 @@ class GeminiModel:
             context_chunks_string=context_chunks_string
         ).to_string()
 
-        logger.info(f"Gemini Code Modification Prompt: {full_prompt}")
+        LOGGER.info(f"Gemini Code Modification Prompt: {full_prompt}")
 
         response = self.model.invoke(full_prompt)
-        logger.info(f"Gemini Code Modification Raw Output: {response.content}")
+        LOGGER.info(f"Gemini Code Modification Raw Output: {response.content}")
         cleaned_response_content = response.content.strip()
         if cleaned_response_content.startswith("```php"):
             cleaned_response_content = cleaned_response_content[6:-3].strip()
@@ -202,7 +199,7 @@ class GeminiModel:
         Returns:
             str: The generated unified diff content as a string.
         """
-    
+        
         if not self.model:
             raise RuntimeError("Gemini model not initialized.")
         
@@ -223,10 +220,10 @@ class GeminiModel:
             user_query=user_query,
             context_chunks_string=context_chunks_string
         ).to_string()
-        logger.info(f"Gemini Diff Generation Prompt: {full_prompt}")
+        LOGGER.info(f"Gemini Diff Generation Prompt: {full_prompt}")
 
         response = self.model.invoke(full_prompt)
-        logger.info(f"Gemini Diff Generation Raw Output: {response.content}")
+        LOGGER.info(f"Gemini Diff Generation Raw Output: {response.content}")
         cleaned_response_content = response.content.strip()
         if cleaned_response_content.startswith("```json"):
             cleaned_response_content = cleaned_response_content[7:-3].strip()
