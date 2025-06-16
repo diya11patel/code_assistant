@@ -15,6 +15,7 @@ from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 from model_interfaces.prompts import gemini_prompts
 from utils.logger import LOGGER
+from code_assistant.utils.utility import get_file_type
 
 import patch
 from unidiff import PatchSet
@@ -326,58 +327,7 @@ class ChatAssistantService():
             # Since LaravelProcessor works on directories, we'll need to trick it into processing a single file
             # We'll use the appropriate method based on the file type
             file_path_obj = Path(absolute_file_path)
-            file_type = None
-
-            # Determine the file type based on its path
-            if "app/Http/Controllers" in file_path:
-                file_type = "controller"
-            elif "app/Models" in file_path:
-                file_type = "model"
-            elif "routes" in file_path:
-                file_type = "route"
-            elif "database/seeders" in file_path:
-                file_type = "seeder"
-            elif "database/factories" in file_path:
-                file_type = "factory"
-            elif "database/migrations" in file_path:
-                file_type = "migration"
-            elif "resources/views" in file_path and file_path.endswith(".blade.php"):
-                file_type = "blade_template"
-            elif "app/Http/Middleware" in file_path:
-                file_type = "middleware"
-            elif "app/Http/Requests" in file_path:
-                file_type = "form_request"
-            elif "app/Services" in file_path:
-                file_type = "service"
-            elif "config" in file_path:
-                file_type = "config"
-            elif "app/Providers" in file_path:
-                file_type = "provider"
-            elif "app/Console/Commands" in file_path:
-                file_type = "command"
-            elif "app/Events" in file_path:
-                file_type = "event"
-            elif "app/Listeners" in file_path:
-                file_type = "listener"
-            elif "app/Jobs" in file_path:
-                file_type = "job"
-            elif "app/Notifications" in file_path:
-                file_type = "notification"
-            elif "app/Rules" in file_path:
-                file_type = "validation_rule"
-            elif "app/Exceptions/Handler.php" in file_path:
-                file_type = "exception_handler"
-            elif "app/Helpers" in file_path:
-                file_type = "helper"
-            elif "bootstrap/app.php" in file_path:
-                file_type = "bootstrap_script"
-            elif "public/index.php" in file_path:
-                file_type = "public_entry_script"
-            elif "tests" in file_path:
-                file_type = "test"
-            else:
-                LOGGER.warning(f"Could not determine file type for {file_path}. Skipping Qdrant update.")
-                return {"status": "warning", "message": f"Could not determine file type for {file_path}"}
+            file_type = get_file_type(file_path)
 
             # Clear existing chunks in the processor to avoid appending duplicates
             self.php_processor.chunks = []
