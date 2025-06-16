@@ -1,4 +1,5 @@
 import io
+import re
 import shutil
 import subprocess
 import zipfile
@@ -22,6 +23,7 @@ logger.propagate = False
 import patch
 from unidiff import PatchSet
 from typing import List, Dict, Any
+from difflib import SequenceMatcher
 
 class ChatAssistantService():
     """
@@ -545,6 +547,7 @@ class ChatAssistantService():
         Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
         """
         self.current_project_path='D:/codes/langGraph_venv/code_assistant'
+        self.current_project_path='D:/codes/langGraph_venv/code_assistant'
         if not self.current_project_path:
             return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
 
@@ -573,7 +576,14 @@ class ChatAssistantService():
             "type": payload.get("type"),   
             "name": payload.get("name")
             } for payload in similar_chunks_payloads]
+            "content": payload.get("content", "No content available for this chunk."),
+            "start_line": payload.get("start_line"), # Ensure this is consistently available
+            "end_line": payload.get("end_line"),     # Ensure this is consistently available
+            "type": payload.get("type"),   
+            "name": payload.get("name")
+            } for payload in similar_chunks_payloads]
 
+        # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
         # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
         try:
             diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
@@ -590,6 +600,7 @@ class ChatAssistantService():
             # Use the patch library function
             apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path)
             # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
             # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
             
             # Check if any patch application failed or warned
@@ -608,7 +619,6 @@ class ChatAssistantService():
             # This catch is for errors *before* the patch library starts processing files
             return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
 
-    import subprocess
 
     def apply_diff_with_patch_command(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
         diff_path = os.path.join(project_root, "temp_patch.diff")
@@ -703,28 +713,20 @@ class ChatAssistantService():
         """
         results = []
         diff_path = os.path.join(project_root, "temp_patch.diff")
-        # with open(diff_path, "w", encoding="utf-8") as f:
-        #     f.write(diff_content)
-
         with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
             f.write(diff_content)
 
         try:
-            import pdb; pdb.set_trace()
-            # patch = PatchSet(io.StringIO(diff_content))
-            # patch_file_like = io.StringIO(newline)
-            # # Need to reset the stream position to the beginning after creating it
-            # patch_file_like.seek(0)
-            # patch_set = PatchSet(patch_file_like)
             with open(diff_path, "r", encoding="utf-8") as f:
                 patch_set = PatchSet(f)
                 logger.info("Parsed OK", patch_set)
 
             for patched_file in patch_set:
+                target_path =  patched_file.path
                 # Strip 'a/' or 'b/' prefix if present
-                path_parts = patched_file.path.split(os.sep)
-                relative_path = os.sep.join(path_parts[1:]) if len(path_parts) > 1 and path_parts[0] in ("a", "b") else patched_file.path
-                target_path = os.path.join(project_root, relative_path)
+                # path_parts = patched_file.path.split(os.sep)
+                # relative_path = os.sep.join(path_parts[1:]) if len(path_parts) > 1 and path_parts[0] in ("a", "b") else patched_file.path
+                # target_path = f"{project_root}/{relative_path}"
 
                 if patched_file.is_removed_file:
                     if os.path.exists(target_path):
@@ -749,33 +751,47 @@ class ChatAssistantService():
                 line_offset = 0
 
                 for hunk in patched_file:
+                    # Calculate the start of the hunk in the file
                     hunk_start = hunk.source_start - 1 + line_offset
-                    hunk_len = hunk.source_length
-                    hunk_lines = patched_lines[hunk_start:hunk_start + hunk_len]
+                    # Extract only the lines from the hunk that are context or removed
+                    expected_lines = [line.value for line in hunk if line.is_context or line.is_removed]
+                    # Extract lines from the actual file at that point
+                    actual_lines = patched_lines[hunk_start:hunk_start + len(expected_lines)]
 
-                    # Rebuild patch area and compare for match
+                    def normalize(line: str):
+                        line = line.replace('\t', '    ')             # Convert tabs to spaces
+                        line = re.sub(r'\s*\{', ' {', line)           # Collapse spaces before {
+                        return line.strip()
+                       
+                    
+                    def is_similar(a: str, b: str, threshold: float = 0.95) -> bool:
+                        return SequenceMatcher(None, normalize(a), normalize(b)).ratio() >= threshold
+                    
+                    # macthing diff content with original code for safe updation
                     matched = all(
-                        old_line.value == patch_line
-                        for old_line, patch_line in zip(
-                            [line for line in hunk if line.is_context or line.is_removed],
-                            hunk_lines
-                        )
+                        is_similar(exp, act)
+                        for exp, act in zip(expected_lines, actual_lines)
                     )
 
+                    # for old_line, patch_line in zip([line for line in hunk if line.is_context or line.is_removed], actual_lines):
+                    #     print(f"LINE: {normalize(old_line.value)}\nline: {normalize(patch_line)}")
+                    #     if normalize(old_line.value) != normalize(patch_line):
+                    #         break
+
+                        
                     if not matched:
                         results.append({"file_path": target_path, "status": "error", "message": f"Hunk did not match context lines at line {hunk_start + 1}"})
                         break
 
                     # Apply hunk
-                    new_lines = []
-                    for line in hunk:
-                        if line.is_context or line.is_added:
-                            new_lines.append(line.value)
+                    hunk_len = len(expected_lines) or hunk.source_length
+                    new_lines = [line.value for line in hunk if line.is_context or line.is_added]
                     patched_lines[hunk_start:hunk_start + hunk_len] = new_lines
                     line_offset += len(new_lines) - hunk_len
 
                 else:
                     # Write back modified file if all hunks applied
+                    # runs if the for loop for pacthed files runs successfully
                     with open(target_path, "w", encoding="utf-8") as f:
                         f.writelines(patched_lines)
                     results.append({"file_path": target_path, "status": "success", "message": "Patch applied."})
