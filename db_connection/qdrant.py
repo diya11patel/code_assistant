@@ -72,7 +72,13 @@ class QdrantDBManager:
                         )
                     )
                     LOGGER.info(f"Collection '{COLLECTION_NAME}' created successfully with vector size {EMBEDDING_DIMENSION}, {DISTANCE_METRIC} distance.")
-
+                    # Create the payload index after collection creation
+                    self.client.create_payload_index(
+                        collection_name=COLLECTION_NAME,
+                        field_name="file_path",
+                        field_type=models.PayloadSchemaType.KEYWORD
+                    )
+                    LOGGER.info(f"Index for 'file_path' created successfully in collection '{COLLECTION_NAME}'.")
                 except Exception as create_exc:
                     LOGGER.error(f"Failed to create collection '{COLLECTION_NAME}': {create_exc}")
                     raise
@@ -83,14 +89,6 @@ class QdrantDBManager:
             LOGGER.error(f"An unexpected error occurred while checking collection '{COLLECTION_NAME}': {e}")
             raise
 
-        finally:
-            # Create the payload index after collection creation
-                self.client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="file_path",
-                    field_type="keyword"
-                )
-                LOGGER.info(f"Index for 'file_path' created successfully in collection '{COLLECTION_NAME}'.")
 
     def get_client(self) -> QdrantClient:
         """
@@ -155,7 +153,7 @@ class QdrantDBManager:
     def search_similar_chunks(
         self,
         embedding: List[float],
-        limit: int = 5,
+        limit: int = 8,
         score_threshold: float = None
     ) -> List[Dict[str, Any]]:
         """

@@ -2,7 +2,7 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
 from utils.logger import LOGGER
-from typing import List, Dict 
+from typing import List, Dict ,Any
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
@@ -155,12 +155,44 @@ class GeminiModel:
             LOGGER.error(f"Error during LangChain Gemini response generation: {e}")
             return LLMQueryResponse(explanation=f"Error generating response: {e}", code_references=[])
         
+    def select_best_chunk_index(self, user_query: str, chunks: List[Dict[str, Any]], prompt_template: str) -> int:
+        """
+        Uses the Gemini model to select the best chunk index for a given user query.
+
+        Args:
+            user_query (str): The user's query string.
+            chunks (List[Dict[str, Any]]): List of chunk payloads from Qdrant.
+            prompt_template (str): The prompt template to use for chunk selection.
+
+        Returns:
+            int: The index of the selected chunk (defaults to 0 if selection fails).
+        """
+        try:
+            # Format the chunks into a numbered list for the prompt
+            snippet_list = "\n\n".join(
+                f"[{i}] {c['file_path']}:\n{c['content']}"
+                for i, c in enumerate(chunks)
+            )
+            # Format the prompt with the user query and snippet list
+            selector_prompt = prompt_template.format(
+                user_query=user_query,
+                snippet_list=snippet_list
+            )
+            # Invoke the Gemini model to get the index
+            idx_str = self.invoke(selector_prompt).content.strip()
+            # Parse the index and ensure it's within bounds
+            idx = max(0, min(len(chunks) - 1, int(idx_str)))
+            return idx
+        except (ValueError, Exception) as e:
+            LOGGER.error(f"Error selecting chunk index with Gemini: {e}. Defaulting to index 0.")
+            return 0   
         
     def generate_modified_code(self, user_query: str, context_chunks: List[Dict[str, str]]) -> str:
         if not self.model:
             raise RuntimeError("Gemini model not initialized.")
         
         context_chunks_string = ""
+        import pdb;pdb.set_trace()
         for i, chunk_info in enumerate(context_chunks):
             context_chunks_string += f"--- Chunk {i+1} ---\n"
             context_chunks_string += f"File: {chunk_info.get('file_path', 'N/A')}\n"

@@ -391,7 +391,7 @@ class ChatAssistantService():
 
         query_embedding = query_embedding_list[0]
         LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
-        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) # Limit can be adjusted
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=8) # Limit can be adjusted
 
         if not similar_chunks_payloads:
              return {"status": "info", "message": "No relevant code chunks found for the query. Cannot suggest changes."}
@@ -403,23 +403,20 @@ class ChatAssistantService():
             "end_line": payload.get("end_line", 0)
         } for payload in similar_chunks_payloads]
 
-        snippet_list = "\n\n".join(
-            f"[{i}] {c['file_path']}:\n{c['content']}"
-            for i, c in enumerate(similar_chunks_payloads)
-        )
-
-        selector_prompt = gemini_prompts.CHUNK_SELECTION_PROMPT.format(
-            user_query=query,
-            snippet_list=snippet_list
-        )
-        idx_str = self.llm_model.invoke(selector_prompt).content.strip()
+        
         try:
-            idx = max(0, min(len(similar_chunks_payloads)-1, int(idx_str)))
-        except ValueError:
+            idx = self.llm_model.select_best_chunk_index(
+                user_query=query,
+                chunks=similar_chunks_payloads,
+                prompt_template=gemini_prompts.CHUNK_SELECTION_PROMPT
+            )
+            LOGGER.info(f"Selected chunk index: {idx}")
+            chunk = similar_chunks_payloads[idx]
+        except Exception as e:
+            LOGGER.error(f"Error selecting best chunk index with LLM: {e}. Defaulting to first chunk.")
             idx = 0
-        chunk = similar_chunks_payloads[idx]
+            chunk = similar_chunks_payloads[idx]
 
-        original = chunk["content"]
         # 2. Generate the Modified Code
         try:
             modified_code = self.llm_model.generate_modified_code(user_query=query, context_chunks=code_chunks_for_llm)
