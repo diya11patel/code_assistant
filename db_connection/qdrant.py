@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 from utils.logger import LOGGER
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -56,17 +57,8 @@ class QdrantDBManager:
         Checks if the specified collection exists, and creates it if it doesn't.
         """
         try:
-            collection_info=self.client.get_collection(collection_name=COLLECTION_NAME)
+            self.client.get_collection(collection_name=COLLECTION_NAME)
             LOGGER.info(f"Collection '{COLLECTION_NAME}' already exists.")
-        # Check if the file_path index exists
-            if "file_path" not in collection_info.payload_schema:
-                LOGGER.info(f"Creating index for 'file_path' in collection '{COLLECTION_NAME}'...")
-                self.client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="file_path",
-                    field_schema=models.PayloadSchemaType.KEYWORD
-                )
-                LOGGER.info(f"Index for 'file_path' created successfully in collection '{COLLECTION_NAME}'.")
 
         except UnexpectedResponse as e:
             if e.status_code == 404:
@@ -77,13 +69,10 @@ class QdrantDBManager:
                         vectors_config=models.VectorParams(
                             size=EMBEDDING_DIMENSION,
                             distance=DISTANCE_METRIC
-                        ),
-                        # Define the index for file_path during collection creation
-                        payload_schema={
-                            "file_path": models.PayloadSchemaType.KEYWORD
-                        }
+                        )
                     )
-                    LOGGER.info(f"Collection '{COLLECTION_NAME}' created successfully with vector size {EMBEDDING_DIMENSION}, {DISTANCE_METRIC} distance, and file_path index.")
+                    LOGGER.info(f"Collection '{COLLECTION_NAME}' created successfully with vector size {EMBEDDING_DIMENSION}, {DISTANCE_METRIC} distance.")
+
                 except Exception as create_exc:
                     LOGGER.error(f"Failed to create collection '{COLLECTION_NAME}': {create_exc}")
                     raise
@@ -93,6 +82,15 @@ class QdrantDBManager:
         except Exception as e:
             LOGGER.error(f"An unexpected error occurred while checking collection '{COLLECTION_NAME}': {e}")
             raise
+
+        finally:
+            # Create the payload index after collection creation
+                self.client.create_payload_index(
+                    collection_name=COLLECTION_NAME,
+                    field_name="file_path",
+                    field_type="keyword"
+                )
+                LOGGER.info(f"Index for 'file_path' created successfully in collection '{COLLECTION_NAME}'.")
 
     def get_client(self) -> QdrantClient:
         """

@@ -15,7 +15,7 @@ from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 from model_interfaces.prompts import gemini_prompts
 from utils.logger import LOGGER
-from code_assistant.utils.utility import get_file_type
+from utils.utility import get_file_type
 
 import patch
 from unidiff import PatchSet
@@ -275,12 +275,11 @@ class ChatAssistantService():
         Returns:
             Dict[str, Any]: Result of the operation with status and message.
         """
-        target_path = os.path.join(project_root, file_path)
 
         try:
             # Read the original file
             
-            with open(target_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
             # Validate line numbers (convert to 0-based indexing for Python)
@@ -300,7 +299,7 @@ class ChatAssistantService():
             lines[start_idx:end_idx] = new_lines
 
             # Write the modified content back to the file
-            with open(target_path, "w", encoding="utf-8") as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
 
             return {"status": "success", "message": f"Successfully overwrote chunk in {file_path} from line {start_line} to {end_line}"}
@@ -308,25 +307,21 @@ class ChatAssistantService():
         except Exception as e:
             return {"status": "error", "message": f"Failed to overwrite chunk in {file_path}: {str(e)}"}
 
-    def update_qdrant_after_file_change(self, file_path: str, project_root: str) -> Dict[str, Any]:
+    def update_qdrant_after_file_change(self, file_path: str) -> Dict[str, Any]:
         """
         Updates the Qdrant database with new chunks after a file has been modified.
 
         Args:
             file_path (str): The relative path to the modified file.
-            project_root (str): The root directory of the project.
 
         Returns:
             Dict[str, Any]: Result of the update operation.
         """
         try:
-            # Step 1: Re-analyze the modified file
-            absolute_file_path = os.path.join(project_root, file_path)
-            LOGGER.info(f"Re-analyzing modified file: {absolute_file_path}")
-
             # Since LaravelProcessor works on directories, we'll need to trick it into processing a single file
             # We'll use the appropriate method based on the file type
-            file_path_obj = Path(absolute_file_path)
+            
+            file_path_obj = Path(file_path)
             file_type = get_file_type(file_path)
 
             # Clear existing chunks in the processor to avoid appending duplicates
@@ -468,7 +463,7 @@ class ChatAssistantService():
                 }
 
             # 4. Update Qdrant with the new chunks
-            update_result = self.update_qdrant_after_file_change(file_path, self.current_project_path)
+            update_result = self.update_qdrant_after_file_change(file_path)
             if update_result["status"] != "success":
                 LOGGER.warning(f"Qdrant update failed after applying changes: {update_result['message']}")
                 return {
