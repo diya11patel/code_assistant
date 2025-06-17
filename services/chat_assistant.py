@@ -15,7 +15,7 @@ from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 from model_interfaces.prompts import gemini_prompts
 from utils.logger import LOGGER
-from code_assistant.utils.utility import get_file_type
+from utils.utility import get_file_type
 
 import patch
 from unidiff import PatchSet
