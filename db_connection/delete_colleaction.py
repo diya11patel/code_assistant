@@ -1,6 +1,8 @@
 from qdrant_client import QdrantClient
-from utils.logger import LOGGER
-from qdrant import COLLECTION_NAME
+# from utils.logger import LOGGER
+from qdrant_client import QdrantClient, models
+
+# from qdrant import COLLECTION_NAME
 
 # Connect to Qdrant
 client = QdrantClient(
@@ -10,11 +12,11 @@ client = QdrantClient(
 )
 
 # Name of the collection to delete
-collection_name = COLLECTION_NAME
+COLLECTION_NAME = "codebase_chunks_v4"
 
 # Delete the collection
-# client.delete_collection(collection_name=collection_name)
-LOGGER.info(f"Collection '{collection_name}' deleted.")
+client.delete_collection(collection_name=COLLECTION_NAME)
+print(f"Collection '{COLLECTION_NAME}' deleted.")
 
 def inspect_qdrant_collection():
     """
@@ -24,28 +26,28 @@ def inspect_qdrant_collection():
     # logger.info(f"Attempting to connect to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}...")
     try:
         # client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=10)
-        LOGGER.info("Successfully connected to Qdrant.")
+        print("Successfully connected to Qdrant.")
 
-        LOGGER.info(f"\nInspecting collection: '{COLLECTION_NAME}'")
+        print(f"\nInspecting collection: '{COLLECTION_NAME}'")
 
         # Check if collection exists
         try:
             collection_info = client.get_collection(collection_name=COLLECTION_NAME)
-            LOGGER.info(f"Collection '{COLLECTION_NAME}' found.")
-            LOGGER.info(f"  Status: {collection_info.status}")
-            LOGGER.info(f"  Points count: {collection_info.points_count}")
-            LOGGER.info(f"  Vectors count: {collection_info.vectors_count}") # Might differ if some points don't have vectors
-            LOGGER.info(f"  Segments count: {collection_info.segments_count}")
-            LOGGER.info(f"  Config: {collection_info.config}")
+            print(f"Collection '{COLLECTION_NAME}' found.")
+            print(f"  Status: {collection_info.status}")
+            print(f"  Points count: {collection_info.points_count}")
+            print(f"  Vectors count: {collection_info.vectors_count}") # Might differ if some points don't have vectors
+            print(f"  Segments count: {collection_info.segments_count}")
+            print(f"  Config: {collection_info.config}")
         except Exception as e:
-            LOGGER.info(f"Could not get collection info for '{COLLECTION_NAME}': {e}")
-            LOGGER.info("Please ensure the collection exists and the Qdrant server is running.")
+            print(f"Could not get collection info for '{COLLECTION_NAME}': {e}")
+            print("Please ensure the collection exists and the Qdrant server is running.")
             return
 
         # Retrieve a sample of points using the scroll API
         # The scroll API is suitable for iterating over all points.
         # For just a few points, client.get_points() could also be used with specific IDs.
-        LOGGER.info("\nFetching a sample of points (up to 10 with payload):")
+        print("\nFetching a sample of points (up to 10 with payload):")
         
         # Using scroll to get some points with their payloads
         # You can adjust the limit
@@ -57,21 +59,21 @@ def inspect_qdrant_collection():
         )
 
         if not scroll_response:
-            LOGGER.info("No points found in the collection or failed to retrieve points.")
+            print("No points found in the collection or failed to retrieve points.")
             return
 
         for i, point in enumerate(scroll_response):
-            LOGGER.info(f"\n--- Point {i+1} ---")
-            LOGGER.info(f"  ID: {point.id}")
-            LOGGER.info(f"  Payload: {point.payload}")
+            print(f"\n--- Point {i+1} ---")
+            print(f"  ID: {point.id}")
+            print(f"  Payload: {point.payload}")
             if point.vector: # If with_vectors=True
                  # logger.info only a snippet of the vector as it can be very long
                 vector_snippet = str(point.vector)[:100] + "..." if len(str(point.vector)) > 100 else str(point.vector)
-                LOGGER.info(f"  Vector (snippet): {vector_snippet}")
+                print(f"  Vector (snippet): {vector_snippet}")
         
-        LOGGER.info(f"\nFetched {len(scroll_response)} points.")
+        print(f"\nFetched {len(scroll_response)} points.")
         if next_page_offset:
-            LOGGER.info(f"There are more points in the collection. Next page offset: {next_page_offset}")
+            print(f"There are more points in the collection. Next page offset: {next_page_offset}")
 
     except Exception as e:
         LOGGER.error(f"An error occurred: {e}")
