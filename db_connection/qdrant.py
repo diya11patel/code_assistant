@@ -216,36 +216,3 @@ class QdrantDBManager:
         except Exception as e:
             LOGGER.error(f"Error deleting chunks for file_path {file_path}: {e}")
             return False
-
-    def get_chunks_by_file_path(self, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Retrieves all chunks associated with a given file_path from the Qdrant collection.
-
-        Args:
-            file_path (str): The file path to match chunks for retrieval.
-
-        Returns:
-            List[Dict[str, Any]]: A list of payloads for the matching chunks.
-        """
-        try:
-            LOGGER.info(f"Retrieving chunks for file_path: {file_path} from collection '{COLLECTION_NAME}'...")
-            search_results = self.client.scroll(
-                collection_name=COLLECTION_NAME,
-                scroll_filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="file_path",
-                            match=models.MatchValue(value=file_path)
-                        )
-                    ]
-                ),
-                limit=1000  # Adjust limit as needed
-            )
-            # search_results is a tuple (points, next_page_offset)
-            points = search_results[0]
-            chunks = [point.payload for point in points if point.payload is not None]
-            LOGGER.info(f"Found {len(chunks)} chunks for file_path: {file_path}")
-            return chunks
-        except Exception as e:
-            LOGGER.error(f"Error retrieving chunks for file_path {file_path}: {e}")
-            return []
