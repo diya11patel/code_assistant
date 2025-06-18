@@ -8,6 +8,8 @@ import tree_sitter_php as tsphp
 # import tree_sitter_html as tshtml
 from tree_sitter import Language, Parser, Node
 from dto.value_objects import CodeChunk
+from utils.logger import LOGGER
+
 
 class LaravelProcessor:
     def __init__(self):

@@ -1,6 +1,8 @@
 from qdrant_client import QdrantClient
+# from utils.logger import LOGGER
+from qdrant_client import QdrantClient, models
 
-from qdrant import COLLECTION_NAME
+# from qdrant import COLLECTION_NAME
 
 # Connect to Qdrant
 client = QdrantClient(
@@ -10,18 +12,18 @@ client = QdrantClient(
 )
 
 # Name of the collection to delete
-collection_name = COLLECTION_NAME
+COLLECTION_NAME = "codebase_chunks_v4"
 
 # Delete the collection
-# client.delete_collection(collection_name=collection_name)
-print(f"Collection '{collection_name}' deleted.")
+client.delete_collection(collection_name=COLLECTION_NAME)
+print(f"Collection '{COLLECTION_NAME}' deleted.")
 
 def inspect_qdrant_collection():
     """
     Connects to Qdrant, retrieves a sample of points from the collection,
-    and prints their details.
+    and logger.infos their details.
     """
-    # print(f"Attempting to connect to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}...")
+    # logger.info(f"Attempting to connect to Qdrant at {QDRANT_HOST}:{QDRANT_PORT}...")
     try:
         # client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT, timeout=10)
         print("Successfully connected to Qdrant.")
@@ -65,7 +67,7 @@ def inspect_qdrant_collection():
             print(f"  ID: {point.id}")
             print(f"  Payload: {point.payload}")
             if point.vector: # If with_vectors=True
-                 # Print only a snippet of the vector as it can be very long
+                 # logger.info only a snippet of the vector as it can be very long
                 vector_snippet = str(point.vector)[:100] + "..." if len(str(point.vector)) > 100 else str(point.vector)
                 print(f"  Vector (snippet): {vector_snippet}")
         
@@ -74,7 +76,7 @@ def inspect_qdrant_collection():
             print(f"There are more points in the collection. Next page offset: {next_page_offset}")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        LOGGER.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     inspect_qdrant_collection()

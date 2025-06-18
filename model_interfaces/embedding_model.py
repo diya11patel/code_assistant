@@ -1,12 +1,10 @@
 from sentence_transformers import SentenceTransformer
 from typing import List
 import logging
+from utils.logger import LOGGER
 
 import torch
 
-# Configure a logger for this module
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO) # Basic config, can be customized
 
 class EmbeddingModel:
     """
@@ -31,15 +29,15 @@ class EmbeddingModel:
         Handles potential errors during model loading.
         """
         try:
-            logger.info(f"Loading embedding model: {self.model_name}...")
+            LOGGER.info(f"Loading embedding model: {self.model_name}...")
             self.model = SentenceTransformer(
                         self.model_name,
                         trust_remote_code=True,
                         model_kwargs={"torch_dtype": torch.float16},
                     ) 
-            logger.info(f"Embedding model '{self.model_name}' loaded successfully.")
+            LOGGER.info(f"Embedding model '{self.model_name}' loaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to load embedding model '{self.model_name}': {e}")
+            LOGGER.error(f"Failed to load embedding model '{self.model_name}': {e}")
             # Depending on the application's needs, you might want to re-raise the exception
             # or handle it in a way that allows the application to continue with limited functionality.
             raise RuntimeError(f"Could not initialize embedding model: {e}")
@@ -56,21 +54,21 @@ class EmbeddingModel:
                                Returns an empty list if the input is empty or the model is not loaded.
         """
         if not self.model:
-            logger.error("Embedding model is not loaded. Cannot generate embeddings.")
+            LOGGER.error("Embedding model is not loaded. Cannot generate embeddings.")
             return []
         
         if not text_chunks:
-            logger.info("No text chunks provided for embedding.")
+            LOGGER.info("No text chunks provided for embedding.")
             return []
 
         try:
-            logger.info(f"Generating embeddings for {len(text_chunks)} chunks...")
+            LOGGER.info(f"Generating embeddings for {len(text_chunks)} chunks...")
             embeddings = self.model.encode(text_chunks, show_progress_bar=True)
-            logger.info("Embeddings generated successfully.")
+            LOGGER.info("Embeddings generated successfully.")
             # Convert numpy arrays to lists of floats if necessary for storage/serialization
             return [embedding.tolist() for embedding in embeddings]
         except Exception as e:
-            logger.error(f"Error during embedding generation: {e}")
+            LOGGER.error(f"Error during embedding generation: {e}")
             return [] # Or re-raise, depending on desired error handling
 
     def get_embedding_dimension(self) -> int:
@@ -81,7 +79,6 @@ class EmbeddingModel:
             int: The embedding dimension, or -1 if the model is not loaded.
         """
         if not self.model:
-            logger.warning("Embedding model is not loaded. Cannot determine embedding dimension.")
+            LOGGER.warning("Embedding model is not loaded. Cannot determine embedding dimension.")
             return -1
         return self.model.get_sentence_embedding_dimension()
-

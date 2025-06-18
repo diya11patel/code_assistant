@@ -1,0 +1,11 @@
+diff
+--- a/root/code_assistant/temp_code_uploads/leave-management-laravel/app/Http/Controllers/LeaveController.php
++++ b/root/code_assistant/temp_code_uploads/leave-management-laravel/app/Http/Controllers/LeaveController.php
+@@ -17,6 +17,7 @@
+ End Line: 20
+ Content:
+ public function apply(Request $request) {
++    //this is a test comment
+     Leave::create($request->all());
+     return redirect()->route('leaves.index');
+     }

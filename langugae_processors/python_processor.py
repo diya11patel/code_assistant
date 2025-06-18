@@ -1,5 +1,7 @@
 
 import ast, os
+from utils.logger import LOGGER
+
 
 class PythonProcessor():
     def parse(self):
@@ -31,5 +33,5 @@ class PythonProcessor():
                             }
                         })
             except Exception as e:
-                print(f"Error parsing {file}: {e}")
+                LOGGER.info(f"Error parsing {file}: {e}")
         return chunks

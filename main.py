@@ -2,7 +2,7 @@
 import shutil
 import os
 import time # For X-Process-Time middleware
-
+from utils.logger import LOGGER
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware # For CORS
 from fastapi.responses import JSONResponse
@@ -50,7 +50,7 @@ async def add_process_time_header(request: Request, call_next):
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
-    print(f"Request {request.method} {request.url.path} processed in {process_time:.4f}s")
+    LOGGER.info(f"Request {request.method} {request.url.path} processed in {process_time:.4f}s")
     return response
 
 @app.exception_handler(Exception)
@@ -62,8 +62,8 @@ async def general_exception_handler(request: Request, exc: Exception):
     """
     # It's good practice to log the actual exception for debugging purposes.
     # In a production environment, you'd likely use a more robust logging library.
-    print(f"An unhandled exception occurred: {exc}")
-    print(f"Request details: {request.method} {request.url.path}")
+    LOGGER.info(f"An unhandled exception occurred: {exc}")
+    LOGGER.info(f"Request details: {request.method} {request.url.path}")
     # You could add more details from 'exc' or 'request' to your logs if needed.
 
     return JSONResponse(

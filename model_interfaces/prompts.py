@@ -96,5 +96,76 @@ class GeminiPrompts(BaseModel):
 
             Generate the unified diff below:
             """
+    FULL_CODE_MODIFICATION_PROMPT: str ="""You are an expert Laravel developer. You will receive:
+            1. A user request describing the desired change.
+            2. The full text of a single method (signature + body.
+
+            This application allows employees to apply for leave, and for an administrator (implicitly) to approve or          reject these leave applications.
+        
+            Here's an outline of the key files and their purpose in this 'leave-management-laravel' project:
+        
+            1.  **`app/Http/Controllers/LeaveController.php`**:
+                *   This is the main controller handling all actions related to leave management.
+                *   `index()`: Displays a list of all leave applications.
+                *   `applyForm()`: Shows the form for an employee to apply for leave.
+                *   `apply()`: Processes the leave application submitted through the form and saves it to the database.
+                *   `approve()`: Marks a specific leave application as 'approved'.
+                *   `reject()`: Marks a specific leave application as 'rejected'.
+
+            2.  **`app/Models/Leave.php`**:
+                *   This is the Eloquent model representing a 'leave' record in the database.
+                *   It defines which fields can be mass-assigned (e.g., `employee_name`, `start_date`, `end_date`,         `reason`, `status`).
+
+            3.  **`database/migrations/create_leaves_table.php`**:
+                *   This migration file defines the schema for the `leaves` table in the database.
+                *   It includes columns like `id`, `employee_name`, `start_date`, `end_date`, `reason`, `status` (pending,         approved, rejected), and timestamps.
+
+            4.  **`resources/views/leave/apply.blade.php`**:
+                *   This is a Blade template file that renders the HTML form for users to submit a leave application.
+                *   It includes input fields for employee name, start date, end date, and reason for leave.
+        
+            5.  **`resources/views/leave/index.blade.php`**:
+                *   This Blade template displays all the leave applications.
+                *   For each leave application, it shows details like employee name, dates, and current status.
+                *   It also includes forms/buttons to 'Approve' or 'Reject' each leave application.
+
+             6.  **`routes/web.php`**:
+                *   This file defines all the web routes for the application.
+                *   It maps specific URLs to the corresponding methods in the `LeaveController`. For example:
+                    *   `GET /leaves` maps to `LeaveController@index`.
+                    *   `GET /leaves/apply` maps to `LeaveController@applyForm`.
+                    *   `POST /leaves/apply` maps to `LeaveController@apply`.
+                    *   `POST /leaves/{{id}}/approve` maps to `LeaveController@approve`.
+                    *   `POST /leaves/{{id}}/reject` maps to `LeaveController@reject`.
+
+            **Inputs**: Use type, name, file_path, content, metadata (e.g., visibility), dependencies.
+            **Chunk Selection**: Identify the most related chunks via dependencies (e.g., models via App\\Models\\*).
+            **Modifications**: Always check model chunks for fillable fields; include all fields in changes using          $request->validate().
+            **Output**: For changes, strictly return the complete modified method (including signature and braces), no         diff, no explanation, using Laravel conventions.
+            **Edge Cases**: If model chunks are missing, return: 'Need the model chunk to validate fields.'
+        
+            Rewrite the entire method to implement the requested change. Return **only** the complete updated method           (signature and body), nothing else.
+        
+            User Request:
+            {user_query}
+
+            Original Method:
+            {context_chunks_string}
+                
+    """
+
+    CHUNK_SELECTION_PROMPT : str = """You are an expert Laravel developer. You will be given:
+        • A user request describing the desired code change.
+        • A numbered list of up to 8 code snippets, each with its file path and its content.
+        
+        Reply with only the zero-based index (0–7) of the snippet that should be modified to satisfy the request.
+        
+        User Request:
+        {user_query}
+        
+        Snippets:
+        {snippet_list}
+        """
+
 
 gemini_prompts = GeminiPrompts()
