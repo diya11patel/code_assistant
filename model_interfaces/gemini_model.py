@@ -169,7 +169,7 @@ class GeminiModel:
                 snippet_list=snippet_list
             )
             # Invoke the Gemini model to get the index
-            idx_str = self.invoke(selector_prompt).content.strip()
+            idx_str = self.model.invoke(selector_prompt).content.strip()
             # Parse the index and ensure it's within bounds
             idx = max(0, min(len(chunks) - 1, int(idx_str)))
             return idx
