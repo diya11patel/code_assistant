@@ -15,10 +15,10 @@ from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 from model_interfaces.prompts import gemini_prompts
 from utils.logger import LOGGER
-from utils.utility import get_file_type
+from utils.utility import get_file_type, normalize_line
 
 import patch
-from unidiff import PatchSet
+from unidiff import Hunk, PatchSet
 from typing import List, Dict, Any
 from difflib import SequenceMatcher
 
@@ -108,7 +108,6 @@ class ChatAssistantService():
         # Ensure extraction path is unique if multiple zips with same name are uploaded (though current logic overwrites)
         extraction_base_name = os.path.splitext(file.filename)[0]
         extraction_path = os.path.join(TEMP_DIR, extraction_base_name)
-
         try:
             # Save the uploaded zip file
             with open(temp_zip_path, "wb") as buffer:
@@ -145,6 +144,18 @@ class ChatAssistantService():
             if hasattr(file, 'file') and file.file:
                 file.file.close()
 
+                # Check if the extraction resulted in a single directory
+        # This is common if the zip file itself contained a root folder for the project
+        items_in_extraction_path = os.listdir(extraction_path)
+        if len(items_in_extraction_path) == 1:
+            single_item_path = os.path.join(extraction_path, items_in_extraction_path[0])
+            if os.path.isdir(single_item_path):
+                LOGGER.info(f"Detected single root folder '{items_in_extraction_path[0]}' in extracted content. Using it as project root.")
+                return single_item_path # Return the path to the inner directory
+
+        # If not a single directory, or multiple items, assume extraction_path is the project root
+        # (e.g., if the zip was created from the contents of the project root directly)
+        LOGGER.info(f"Using extraction path '{extraction_path}' as project root.")
         return extraction_path
 
     def query_for_semantic_search(self, query: str, top_k: int = 5) -> QueryResponse:
@@ -501,7 +512,7 @@ class ChatAssistantService():
 
         query_embedding = query_embedding_list[0]
         LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
-        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) # Limit can be adjusted
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=8) # Limit can be adjusted
 
         if not similar_chunks_payloads:
              return {"status": "info", "message": "No relevant code chunks found for the query. Cannot suggest changes."}
@@ -515,12 +526,8 @@ class ChatAssistantService():
             "name": payload.get("name")
             } for payload in similar_chunks_payloads]
             
-
-        # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
-        # code_chunks_for_llm = [{'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\routes\\web.php', 'content': "Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function approve($id) {\n        $leave = Leave::findOrFail($id);\n        $leave->status = 'approved';\n        $leave->save();\n        return back();\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function applyForm() {\n        return view('leave.apply');\n    }"}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\resources\\views\\leave\\index.blade.php', 'content': '<h1>All Leave Applications</h1>\n@foreach($leaves as $leave)\n    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>\n    <form method="POST" action="{{ route(\'leaves.approve\', $leave->id) }}">@csrf<button>Approve</button></form>\n    <form method="POST" action="{{ route(\'leaves.reject\', $leave->id) }}">@csrf<button>Reject</button></form>\n@endforeach\n'}, {'file_path': 'D:\\codes\\langGraph_venv\\code_assistant\\temp_code_uploads\\leave-management-laravel\\app\\Http\\Controllers\\LeaveController.php', 'content': "public function index() {\n        return view('leave.index', ['leaves' => Leave::all()]);\n    }"}]
         try:
             diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
-            LOGGER.info(f"LLM generated diff:\n{diff_output}")
             # Basic check if LLM returned something that looks like a diff or an explanation
             if not diff_output or diff_output.strip().startswith("#") or not any(line.startswith(('--- ', '+++ ', '@@ ')) for line in diff_output.splitlines()):
                  return {"status": "info", "message": "LLM did not generate a valid diff.", "diff": diff_output}
@@ -530,11 +537,20 @@ class ChatAssistantService():
 
         # 3. Apply the diff
         try:
-            # Use the patch library function
-            apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path)
+            diff_path = os.path.join(self.current_project_path, "temp_patch.diff")
+            with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
+                f.write(diff_output)
+
+            repaired_diff = self.repair_diff(diff_output)
+
+            #rewrite repaired diff
+            with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
+                f.write(repaired_diff)
+
+            apply_results = self.apply_diff_with_unidiff(repaired_diff, self.current_project_path, diff_path)
             # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
             # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
-            # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_git_apply(diff_output, self.current_project_path)
             
             # Check if any patch application failed or warned
             overall_status = "success"
@@ -549,6 +565,8 @@ class ChatAssistantService():
             return {"status": overall_status, "message": "\n".join(messages), "diff": diff_output, "apply_results": apply_results}
 
         except Exception as e:
+            apply_results = self.apply_diff_with_git_apply(diff_output, self.current_project_path)
+
             # This catch is for errors *before* the patch library starts processing files
             return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
 
@@ -639,27 +657,18 @@ class ChatAssistantService():
 
         return results
     
-    def apply_diff_with_unidiff(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
+    def apply_diff_with_unidiff(self, diff_content: str, project_root: str, diff_path: str) -> List[Dict[str, Any]]:
         """
         Applies a unified diff string to files within the project root using the 'unidiff' library.
         Returns a list of results indicating success or failure for each file.
         """
         results = []
-        diff_path = os.path.join(project_root, "temp_patch.diff")
-        with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
-            f.write(diff_content)
-
         try:
             with open(diff_path, "r", encoding="utf-8") as f:
                 patch_set = PatchSet(f)
                 LOGGER.info("Parsed OK", patch_set)
-
             for patched_file in patch_set:
                 target_path =  patched_file.path
-                # Strip 'a/' or 'b/' prefix if present
-                # path_parts = patched_file.path.split(os.sep)
-                # relative_path = os.sep.join(path_parts[1:]) if len(path_parts) > 1 and path_parts[0] in ("a", "b") else patched_file.path
-                # target_path = f"{project_root}/{relative_path}"
 
                 if patched_file.is_removed_file:
                     if os.path.exists(target_path):
@@ -691,14 +700,11 @@ class ChatAssistantService():
                     # Extract lines from the actual file at that point
                     actual_lines = patched_lines[hunk_start:hunk_start + len(expected_lines)]
 
-                    def normalize(line: str):
-                        line = line.replace('\t', '    ')             # Convert tabs to spaces
-                        line = re.sub(r'\s*\{', ' {', line)           # Collapse spaces before {
-                        return line.strip()
+                    
                        
                     
                     def is_similar(a: str, b: str, threshold: float = 0.95) -> bool:
-                        return SequenceMatcher(None, normalize(a), normalize(b)).ratio() >= threshold
+                        return SequenceMatcher(None, normalize_line(a), normalize_line(b)).ratio() >= threshold
                     
                     # macthing diff content with original code for safe updation
                     matched = all(
@@ -706,9 +712,11 @@ class ChatAssistantService():
                         for exp, act in zip(expected_lines, actual_lines)
                     )
 
+
+                    #THIS FOR DEBUGGING
                     # for old_line, patch_line in zip([line for line in hunk if line.is_context or line.is_removed], actual_lines):
-                    #     LOGGER.info(f"LINE: {normalize(old_line.value)}\nline: {normalize(patch_line)}")
-                    #     if normalize(old_line.value) != normalize(patch_line):
+                    #     print(f"LINE: {normalize_line(old_line.value)}\nline: {normalize_line(patch_line)}")
+                    #     if normalize_line(old_line.value) != normalize_line(patch_line):
                     #         break
 
                         
@@ -733,3 +741,115 @@ class ChatAssistantService():
             results.append({"file_path": "N/A", "status": "error", "message": str(e)})
 
         return results
+    
+    def apply_diff_with_git_apply(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
+        """
+        Applies a unified diff string using the 'git apply' command.
+        This assumes the project_root is a git repository.
+        """
+        diff_path = os.path.join(project_root, "temp_patch.diff")
+        with open(diff_path, "w", encoding="utf-8") as f:
+            f.write(diff_content)
+
+        try:
+            # Check if the project_root is a git repository
+            git_check_result = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            if git_check_result.returncode != 0 or git_check_result.stdout.strip() != "true":
+                return [{"status": "error", "message": f"Project root '{project_root}' is not a git repository."}]
+
+            # Run git apply
+            result = subprocess.run(
+                ["git", "apply", "--verbose", diff_path], # --verbose gives more output
+                cwd=project_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False # Don't raise an exception on non-zero exit codes
+            )
+
+            if result.returncode == 0:
+                return [{"status": "success", "message": f"Git apply successful.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"}]
+            else:
+                # git apply can fail for various reasons (e.g., patch does not apply)
+                error_message = f"Git apply failed with return code {result.returncode}.\nSTDERR:\n{result.stderr}\nSTDOUT:\n{result.stdout}"
+                return [{"status": "error", "message": error_message}]
+        except FileNotFoundError:
+            return [{"status": "error", "message": "The 'git' command was not found. Please ensure Git is installed and in your system's PATH."}]
+        except Exception as e:
+            return [{"status": "error", "message": f"An unexpected error occurred: {e}"}]
+        finally:
+            if os.path.exists(diff_path):
+                os.remove(diff_path)
+
+
+    def realign_hunk_to_matching_chunk(self, hunk: Hunk, chunk_metadata: dict[str, Any]) -> dict[str, Any]:
+        """
+        Tries to find the best matching chunk from metadata for a given set of hunk lines.
+        """
+        max_score = 0
+        best_match = None
+
+        hunk_text = "\n".join(normalize_line(line.value) for line in hunk if line.line_type in ('-', '+', ' '))
+
+        for chunk in chunk_metadata.values():
+            chunk_text = normalize_line(chunk.get("content", ""))
+            score = SequenceMatcher(None, hunk_text, chunk_text).ratio()
+            if score > max_score:
+                max_score = score
+                best_match = chunk
+
+        return best_match if max_score > 0.5 else None  # Tune threshold as needed
+    
+    def realign_hunk_to_original_file(self, hunk: Hunk, original_lines: list[str]) -> tuple[str, bool]:
+        """
+        Tries to find the best matching location in the original file for the hunk's context lines.
+        Returns the new starting line number and a boolean indicating success.
+        """
+        context_lines = [normalize_line(line.value) for line in hunk if line.line_type == ' ']
+        if not context_lines:
+            return hunk.source_start, False  # Nothing to match on
+
+        for i in range(len(original_lines) - len(context_lines) + 1):
+            match = True
+            for j, context_line in enumerate(context_lines):
+                if normalize_line(original_lines[i + j]) != context_line:
+                    match = False
+                    break
+            if match:
+                return i + 1, True  # Line numbers in diffs are 1-based
+
+        return hunk.source_start, False  # No match found
+
+    def repair_diff(self, diff_content: str, chunk_metadata: dict[str, Any] = {}) -> str:
+        """
+        Repairs malformed hunk headers in a unified diff string by aligning with chunk metadata.
+        """
+        patch_set = PatchSet(io.StringIO(diff_content))
+        # with open(diff_path, "r", encoding="utf-8") as f:
+        #     cpatch_set = PatchSet(f)
+
+        for patched_file in patch_set:
+            for hunk in patched_file:
+                # best_chunk = self.realign_hunk_to_matching_chunk(list(hunk), chunk_metadata)
+                # if not best_chunk:
+                #     continue  # Skip if no matching chunk
+
+                # new_start = best_chunk["start_line"]
+
+                # Split hunk lines
+                old_lines = [l for l in hunk if l.is_removed or l.is_context]
+                new_lines = [l for l in hunk if l.is_added or l.is_context]
+
+                # Repair header
+                # hunk.source_start = new_start
+                hunk.source_length = len(old_lines)
+                # hunk.target_start = new_start
+                hunk.target_length = len(new_lines)
+
+        return str(patch_set)

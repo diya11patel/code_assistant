@@ -42,12 +42,13 @@ class EmbeddingModel:
             # or handle it in a way that allows the application to continue with limited functionality.
             raise RuntimeError(f"Could not initialize embedding model: {e}")
 
-    def embed_chunks(self, text_chunks: List[str]) -> List[List[float]]:
+    def embed_chunks(self, text_chunks: List[str], batch_size: int = 10) -> List[List[float]]:
         """
         Generates embeddings for a list of text chunks.
 
         Args:
             text_chunks (List[str]): A list of text strings to embed.
+            batch_size (int): The number of chunks to process in each batch.
 
         Returns:
             List[List[float]]: A list of embeddings, where each embedding is a list of floats.
@@ -56,17 +57,26 @@ class EmbeddingModel:
         if not self.model:
             LOGGER.error("Embedding model is not loaded. Cannot generate embeddings.")
             return []
-        
+
         if not text_chunks:
             LOGGER.info("No text chunks provided for embedding.")
             return []
 
         try:
-            LOGGER.info(f"Generating embeddings for {len(text_chunks)} chunks...")
-            embeddings = self.model.encode(text_chunks, show_progress_bar=True)
+            all_embeddings = []
+            LOGGER.info(f"Generating embeddings for {len(text_chunks)} chunks in batches of {batch_size}...")
+            
+            for i in range(0, len(text_chunks), batch_size):
+                batch = text_chunks[i:i + batch_size]
+                LOGGER.info(f"Processing batch {i // batch_size + 1}/{(len(text_chunks) + batch_size - 1) // batch_size}...")
+                batch_embeddings_np = self.model.encode(batch, show_progress_bar=True) # Progress bar per batch might be too verbose
+                
+                # Convert numpy arrays to lists of floats for each embedding in the batch
+                batch_embeddings_list = [embedding.tolist() for embedding in batch_embeddings_np]
+                all_embeddings.extend(batch_embeddings_list)
+
             LOGGER.info("Embeddings generated successfully.")
-            # Convert numpy arrays to lists of floats if necessary for storage/serialization
-            return [embedding.tolist() for embedding in embeddings]
+            return all_embeddings
         except Exception as e:
             LOGGER.error(f"Error during embedding generation: {e}")
             return [] # Or re-raise, depending on desired error handling

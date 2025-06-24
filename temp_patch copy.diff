@@ -4,39 +4,39 @@ diff
 @@ -29,10 +29,10 @@
      }
  
-     public function reject($id) {
+ public function reject($id) {
 -        $leave = Leave::findOrFail($id);
 -        $leave->status = 'rejected';
 -        $leave->save();
 -        return back();
-+       $leave = Leave::findOrFail($id);
-+       $leave->status = 'rejected';
-+       $leave->save();
-+       return back();
++    $leave = Leave::findOrFail($id);
++    $leave->status = 'rejected';
++    $leave->save();
++    return back();
      }
  
- 
-
+ }
 --- a/D:\codes\langGraph_venv\code_assistant\temp_code_uploads\leave-management-laravel\resources\views\leave\index.blade.php
 +++ b/D:\codes\langGraph_venv\code_assistant\temp_code_uploads\leave-management-laravel\resources\views\leave\index.blade.php
 @@ -1,9 +1,9 @@
  <h1>All Leave Applications</h1>
  @foreach($leaves as $leave)
-     <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>
+-    <p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>
 -    <form method="POST" action="{{ route('leaves.approve', $leave->id) }}">@csrf<button>Approve</button></form>
 -    <form method="POST" action="{{ route('leaves.reject', $leave->id) }}">@csrf<button>Reject</button></form>
++<p>{{ $leave->employee_name }} | {{ $leave->start_date }} to {{ $leave->end_date }} | {{ $leave->status }}</p>
 +<form method="POST" action="{{ route('leaves.approve', $leave->id) }}">@csrf<button>Approve</button></form>
 +<form method="POST" action="{{ route('leaves.decline', $leave->id) }}">@csrf<button>Decline</button></form>
  @endforeach
  
  
- 
-+--- a/D:\codes\langGraph_venv\code_assistant\temp_code_uploads\leave-management-laravel\routes\web.php
+-
+--- a/D:\codes\langGraph_venv\code_assistant\temp_code_uploads\leave-management-laravel\routes\web.php
 +++ b/D:\codes\langGraph_venv\code_assistant\temp_code_uploads\leave-management-laravel\routes\web.php
 @@ -8,5 +8,5 @@
- Route::get('/leaves', [LeaveController::class, 'index'])->name('leaves.index');
- 
- Route::post('/leaves/{id}/reject', [LeaveController::class, 'reject'])->name('leaves.reject');
--
-+Route::post('/leaves/{id}/decline', [LeaveController::class, 'reject'])->name('leaves.decline');
- Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve');
+ Route::get('/leaves', [LeaveController::class, 'index'])->name('leaves.index')
+ Route::get('/leaves/apply', [LeaveController::class, 'applyForm'])->name('leaves.applyForm')
+ Route::post('/leaves/apply', [LeaveController::class, 'apply'])->name('leaves.apply')
+-Route::post('/leaves/{id}/reject', [LeaveController::class, 'reject'])->name('leaves.reject')
++Route::post('/leaves/{id}/decline', [LeaveController::class, 'reject'])->name('leaves.decline')
+ Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve'])->name('leaves.approve')

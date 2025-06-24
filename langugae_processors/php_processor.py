@@ -81,7 +81,6 @@ class LaravelProcessor:
         """Analyze route files"""
         if not routes_path.exists():
             return
-
         for php_file in routes_path.glob("*.php"):
             self._parse_route_file(php_file)
 
@@ -227,6 +226,7 @@ class LaravelProcessor:
     def _parse_php_file(self, file_path: Path, file_type: str):
         """Parse a PHP file and extract meaningful chunks"""
         try:
+            LOGGER.info(f"Parsing file: {file_path}")
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except UnicodeDecodeError:
