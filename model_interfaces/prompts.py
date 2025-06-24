@@ -62,45 +62,40 @@ class GeminiPrompts(BaseModel):
 
     JSON Response:"""
 
-    DIFF_GENERATION_PROMPT: str= """You are an expert at providing code changes for a laravel project.You are given with the codebase outline. Your task is to generate a code change in the unified diff format based on the user's request and the provided code context.
-            Analyze the user's request and the relevant code chunks. Determine what code needs to be added, removed, or modified.
-            Generate the patch file with the changes. Provide the diff header line numbers accoridng to the chunk start and
-            end line given in the chunk detail. The diff header line number should not be excedding the chunk end line
-            Rules for the diff format:
-            - Ensure to follow standard unidiff format
-            - Start with `diff --git a/full/path/to/original/file b/full/path/to/modified/file`
-            - Follow with `--- a/full/path/to/original/file`
-            - Then `+++ b/full/path/to/modified/file`
-            - Use `@@ ... @@` lines to indicate hunk headers (line numbers and counts).
-            - Lines starting with `-` are removed lines.
-            - Lines starting with `+` are added lines.
-            - Lines starting with ` ` (a single space) are context lines (unchanged lines shown for context).
-            - Ensure the diff is syntactically correct and can be applied using a standard patch tool.
-            - When creating a Patchset using unidiff , it should not give any errors.For eg: Hunk is shorter than expected. This error comes because you atre not giving proper closing braclets for an open curly bracket.
-            - If the request is unclear or cannot be fulfilled based on the context, provide an empty diff or explain why in a comment within the diff format (e.g., starting lines with `#`).
+    DIFF_GENERATION_PROMPT: str = """You are an expert at producing valid unified diffs for a Laravel codebase. You will receive:
+            1. A user request describing the desired change.
+            2. A set of relevant code chunks with their file paths and start/end line numbers.
 
-            ***Constraint***
-            1. From the given code chunks, find the best match chunk for the user query and do the code changes.
-            2. It is possible that code changes may be required in two or more different chuks in different fils.
-            3. Provide all the relevant code changes at once.
-            4. The diff should show the entire context (i.e., is the number of lines given in the header should matach with actualline changes),
-                 not just the lines that have changed.
-            5. Code start line and end line is given is the chunk, while creating the diff_header make sure 
-                it is correct to correspond to line numbers.
+            Your task is to generate **only** a unified diff that can be applied cleanly with `git apply` or `patch`. Follow these rules exactly:
 
+            1. Begin with: diff --git a{file_path} b{file_path}
+            2. Next, include the index line if available: index <old_sha>..<new_sha> 100644
+            3. Then:--- a{file_path}
+                    +++ b{file_path}
+            4. For each hunk, use:@@ -<orig_start>,<orig_count> +<new_start>,<new_count> @@
+            5. Include **all** context lines within the hunk:
+                - Unchanged lines prefixed with a single space.
+                - Removed lines prefixed with `-`.
+                - Added lines prefixed with `+`.
+            6. Line numbers in the hunk header must match the provided chunk’s start/end.
+            7. Paths must be relative to the repository root.
+            8. Do **not** include markdown fences, commentary, or extra text.
+            9. Ensure every line ends with `\n`.
 
-            User Request: "{user_query}"
+            If no changes are needed, output an empty diff.
 
-            Relevant Code Chunks:
-            {context_chunks_string}
+            User Request:{user_query}
 
-            Generate the unified diff below:
-            """
+            Relevant Code Chunks: {context_chunks_string}
+
+            Generate the unified diff now:
+    """
+
     FULL_CODE_MODIFICATION_PROMPT: str ="""You are an expert Laravel developer. You will receive:
             1. A user request describing the desired change.
             2. The full text of a single method (signature + body.
 
-            This application allows employees to apply for leave, and for an administrator (implicitly) to approve or          reject these leave applications.
+            This application allows employees to apply for leave, and for an administrator (implicitly) to approve or reject these leave applications.
         
             Here's an outline of the key files and their purpose in this 'leave-management-laravel' project:
         
@@ -154,18 +149,29 @@ class GeminiPrompts(BaseModel):
                 
     """
 
-    CHUNK_SELECTION_PROMPT : str = """You are an expert Laravel developer. You will be given:
-        • A user request describing the desired code change.
-        • A numbered list of up to 8 code snippets, each with its file path and its content.
-        
-        Reply with only the zero-based index (0–7) of the snippet that should be modified to satisfy the request.
-        
-        User Request:
-        {user_query}
-        
-        Snippets:
-        {snippet_list}
-        """
+    BATCH_CODE_GENERATION_PROMPT:str = """You are an expert Laravel developer. You will receive:
+            1. A user request describing the desired changes.
+            2. Multiple code chunks, each with a file path, content, start line, and end line.
+
+            This application is a Leave Management System built with Laravel, allowing employees to apply for leave and administrators to approve or reject them. Key files include:
+            - `app/Http/Controllers/LeaveController.php`: Handles leave actions (index, applyForm, apply, approve, reject).
+            - `app/Models/Leave.php`: Eloquent model with fields like `employee_name`, `start_date`, `end_date`, `reason`, `status`.
+            - `database/migrations/create_leaves_table.php`: Defines the `leaves` table schema.
+            - `resources/views/leave/apply.blade.php`: Form for leave applications.
+            - `resources/views/leave/index.blade.php`: Displays leave applications with approve/reject buttons.
+            - `routes/web.php`: Defines web routes.
+
+            **Inputs**: Use file_path, content, start_line, end_line.
+            **Task**: Analyze all provided code chunks and identify which ones need modification based on the user request. Rewrite ONLY the methods in the relevant chunks to implement the requested changes. Return a JSON object where keys are the 0-based indices of the chunks to modify and values are the complete modified methods (including signature and braces), following Laravel conventions.
+            **Edge Cases**: If a model chunk is missing for validation (e.g., for `app/Models/Leave.php`), return "Need the model chunk to validate fields." for that index. If no chunks need modification, return an empty JSON object {{}}.
+            **Output**: Return a COMPLETE JSON object, e.g., {{"0": "modified_method_0", "2": "modified_method_2"}}. Ensure the response is wrapped in curly braces {{}} and contains valid JSON syntax.
+
+            User Request: {user_query}
+            Relevant Code Chunks: {context_chunks_string}
+
+            JSON Response:
+            
+    """
 
 
 gemini_prompts = GeminiPrompts()
