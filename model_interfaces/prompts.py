@@ -95,9 +95,7 @@ class GeminiPrompts(BaseModel):
 
             User Request: "{user_query}"
 
-            Relevant Code Chunks:
-            {context_chunks_string}
-
+            Relevant Code Chunks: {context_chunks_string}
             Generate the unified diff for the above context.
             """
     

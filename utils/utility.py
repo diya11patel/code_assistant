@@ -88,3 +88,8 @@ def normalize_line(line: str):
         line = re.sub(r'\s*\{', ' {', line)           # Collapse spaces before {
         return line.strip()
 
+def normalize_lines(lines: list[str]) -> list[str]:
+    """
+    Normalizes a list of lines by applying the same normalization as normalize_line to each line.
+    """
+    return [normalize_line(line) for line in lines]

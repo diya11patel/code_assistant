@@ -153,7 +153,7 @@ class QdrantDBManager:
     def search_similar_chunks(
         self,
         embedding: List[float],
-        limit: int = 8,
+        limit: int = 5,
         score_threshold: float = None
     ) -> List[Dict[str, Any]]:
         """
@@ -216,3 +216,93 @@ class QdrantDBManager:
         except Exception as e:
             LOGGER.error(f"Error deleting chunks for file_path {file_path}: {e}")
             return False
+
+    def get_concatenated_adjacent_chunks(self, search_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Fetches and concatenates each chunk from search_results with its previous and next chunks,
+        creating larger chunks for improved diff generation context.
+
+        Args:
+            search_results (List[Dict[str, Any]]): List of payloads from search_similar_chunks,
+                                                  each containing file_path, start_line, end_line, and content.
+
+        Returns:
+            List[Dict[str, Any]]: List of concatenated chunks (original + up to 2 adjacent per side where available),
+                                 limited to 5 total chunks.
+        """
+        if not search_results:
+            LOGGER.info("No search results provided to concatenate adjacent chunks.")
+            return []
+
+        concatenated_chunks = []
+        processed_files = set()
+
+        for chunk in search_results:
+            file_path = chunk.get("file_path")
+            start_line = chunk.get("start_line")
+            end_line = chunk.get("end_line")
+            content = chunk.get("content", "")
+
+            if not all([file_path, start_line is not None, end_line is not None, content]):
+                LOGGER.warning(f"Invalid chunk metadata for {file_path}: missing required fields.")
+                continue
+
+            if file_path not in processed_files:
+                processed_files.add(file_path)
+                try:
+                    # Fetch all chunks for the file_path
+                    LOGGER.info(f"Fetching all chunks for file_path: {file_path}")
+                    scroll_result = self.client.scroll(
+                        collection_name=COLLECTION_NAME,
+                        scroll_filter=models.Filter(
+                            must=[
+                                models.FieldCondition(
+                                    key="file_path",
+                                    match=models.MatchValue(value=file_path)
+                                )
+                            ]
+                        ),
+                        limit=1000,  # Adjust based on expected number of chunks per file
+                        with_payload=True,
+                        with_vectors=False
+                    )
+
+                    # Extract points from scroll_result[0] (list of PointStruct objects)
+                    points = scroll_result[0] if scroll_result and len(scroll_result) > 0 else []
+                    chunks = [point.payload for point in points if point.payload]
+                    if not chunks:
+                        LOGGER.warning(f"No chunks found for file_path: {file_path}")
+                        continue
+
+                    # Sort chunks by start_line
+                    chunks.sort(key=lambda x: x.get("start_line", float('inf')))
+
+                    # Find the current chunk's index
+                    current_idx = next((i for i, c in enumerate(chunks) if c.get("start_line") == start_line and c.get("end_line") == end_line), None)
+                    if current_idx is None:
+                        LOGGER.warning(f"Current chunk not found in sorted list for file_path: {file_path}")
+                        continue
+
+                    # Collect up to 5 chunks (previous 1, current, next 1)
+                    start_idx = max(0, current_idx - 1)
+                    end_idx = min(len(chunks), current_idx + 2)  # Include current + up to 2 next
+                    window_chunks = chunks[start_idx:end_idx]
+
+                    # Concatenate contents and update metadata
+                    concatenated_content = "\n".join(c.get("content", "") for c in window_chunks)
+                    new_start_line = window_chunks[0].get("start_line")
+                    new_end_line = window_chunks[-1].get("end_line")
+
+                    concatenated_chunks.append({
+                        "file_path": file_path,
+                        "start_line": new_start_line,
+                        "end_line": new_end_line,
+                        "content": concatenated_content
+                    })
+
+                except Exception as e:
+                    LOGGER.error(f"Error fetching and concatenating chunks for file_path {file_path}: {e}")
+                    continue
+
+        # Limit to 5 concatenated chunks as per your request
+        return concatenated_chunks[:5]

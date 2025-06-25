@@ -15,7 +15,7 @@ from model_interfaces.embedding_model import EmbeddingModel
 from model_interfaces.gemini_model import GeminiModel
 from model_interfaces.prompts import gemini_prompts
 from utils.logger import LOGGER
-from utils.utility import get_file_type, normalize_line
+from utils.utility import get_file_type, normalize_line,normalize_lines
 
 import patch
 from unidiff import Hunk, PatchSet
@@ -490,6 +490,83 @@ class ChatAssistantService():
             return {"status": "error", "message": f"Error applying modified code: {e}", "modified_code": modified_code}
 
     # restored the original approach function
+    # new approach for concatenated chunks
+    def suggest_and_apply_code_update_new(self, query: str) -> Dict[str, Any]:
+        """
+        PoC method to suggest and apply code changes via diff.
+        Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
+        """
+        self.current_project_path='/root/code_assistant'
+        # self.current_project_path='D:/codes/langGraph_venv/code_assistant'
+        if not self.current_project_path:
+            return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
+
+        # 1. Perform Semantic Search
+        processed_query_for_search = query # Skip analysis for PoC
+        try:
+            query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
+        except Exception as e:
+             return {"status": "error", "message": f"Error generating embedding for the query: {e}"}
+
+        if not query_embedding_list:
+            return {"status": "error", "message": "Could not generate embedding for the query."}
+
+        query_embedding = query_embedding_list[0]
+        LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) # Limit can be adjusted
+        LOGGER.info(f"Found {len(similar_chunks_payloads)} similar chunks out of limit 5.")
+        if not similar_chunks_payloads:
+             return {"status": "info", "message": "No relevant code chunks found for the query. Cannot suggest changes."}
+
+        # 2. Concatenate with adjacent chunks
+        code_chunks_for_llm = self.vector_store.get_concatenated_adjacent_chunks(similar_chunks_payloads)
+        import pdb;pdb.set_trace()
+        if not code_chunks_for_llm:
+            return {"status": "info", "message": "No concatenated chunks available for diff generation."}
+
+        try:
+            diff_output = self.llm_model.generate_code_diff(user_query=query, context_chunks=code_chunks_for_llm)
+            # Basic check if LLM returned something that looks like a diff or an explanation
+            if not diff_output or diff_output.strip().startswith("#") or not any(line.startswith(('--- ', '+++ ', '@@ ')) for line in diff_output.splitlines()):
+                 return {"status": "info", "message": "LLM did not generate a valid diff.", "diff": diff_output}
+
+        except Exception as e:
+            return {"status": "error", "message": f"Error generating diff with LLM: {e}"}
+
+        # 3. Apply the diff
+        try:
+            diff_path = os.path.join(self.current_project_path, "temp_patch.diff")
+            with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
+                f.write(diff_output)
+
+            #rewrite repaired diff
+            with open(diff_path, "w", newline="\n", encoding="utf-8") as f:
+                f.write(diff_output)
+
+            apply_results = self.apply_diff_with_unidiff(diff_output, self.current_project_path, diff_path)
+            # apply_results = self.apply_diff_with_patch_lib(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_patch_command(diff_output, self.current_project_path)
+            # apply_results = self.apply_diff_with_git_apply(diff_output, self.current_project_path)
+            
+            # Check if any patch application failed or warned
+            overall_status = "success"
+            messages = ["Code changes suggested and application attempted."]
+            for res in apply_results:
+                 messages.append(f"  File {res['file_path']}: {res['status']} - {res['message']}")
+                 if res['status'] == 'error':
+                      overall_status = "error"
+                 elif res['status'] == 'warning' and overall_status != 'error':
+                      overall_status = "warning"
+
+            return {"status": overall_status, "message": "\n".join(messages), "diff": diff_output, "apply_results": apply_results}
+
+        except Exception as e:
+            apply_results = self.apply_diff_with_git_apply(diff_output, self.current_project_path)
+
+            # This catch is for errors *before* the patch library starts processing files
+            return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
+
+    # original repair dff
     def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
@@ -853,3 +930,81 @@ class ChatAssistantService():
                 hunk.target_length = len(new_lines)
 
         return str(patch_set)
+
+    def validate_and_adjust_diff_lines(self, diff_content: str, file_path: str, project_root: str) -> str:
+        """
+        Validates and adjusts diff line numbers by matching normalized context.
+        """
+        try:
+                # Read the target file as lines
+            target_file_path = os.path.join(project_root, file_path)
+            with open(target_file_path, "r", encoding="utf-8") as f:
+                file_lines = [line for line in f.readlines()]  # Read as lines first
+            file_lines = [normalize_line(line) for line in file_lines]  # Normalize each line
+
+            adjusted_diff_lines = []
+            current_file_line = 0
+            in_hunk = False
+            hunk_header = ""
+            import pdb; pdb.set_trace()
+            for line in diff_content.splitlines():
+                if line.startswith("@@"):
+                    if in_hunk:
+                        adjusted_diff_lines.append(hunk_header)  # Add the last adjusted header
+                    hunk_header = line
+                    in_hunk = True
+                    current_file_line = 0  # Reset for new hunk
+                    adjusted_diff_lines.append(line)
+                    continue
+                elif line.startswith(("---", "+++", "diff --git")):
+                    adjusted_diff_lines.append(line)
+                    continue
+                elif not in_hunk:
+                    adjusted_diff_lines.append(line)
+                    continue
+
+                # Process hunk lines
+                if in_hunk:
+                    if line.startswith(' '):  # Context line
+                        if current_file_line < len(file_lines):
+                            file_line = file_lines[current_file_line]  # Already normalized string
+                            diff_line = normalize_lines(line)  # Normalize diff context line
+                            if file_line == diff_line:  # Match after normalization
+                                current_file_line += 1
+                                adjusted_diff_lines.append(line)  # Preserve original line with indentation
+                            else:
+                                # Search for the next match with normalization, limit to avoid infinite loops
+                                search_limit = min(100, len(file_lines) - current_file_line)  # Cap search to 100 lines
+                                for i in range(current_file_line, current_file_line + search_limit):
+                                    if file_lines[i] == diff_line:
+                                        current_file_line = i + 1
+                                        adjusted_diff_lines.append(line)  # Preserve original line
+                                        break
+                                else:
+                                    LOGGER.warning(f"No match for context line '{line[1:].rstrip()}' near line {current_file_line}. Skipping.")
+                    elif line.startswith('-'):  # Removed line
+                        current_file_line += 1
+                    elif line.startswith('+'):  # Added line
+                        adjusted_diff_lines.append(line)  # Preserve original indentation
+
+                    # Update header if we’ve processed some lines
+                    if current_file_line > 0 and ' ' in [l[0] for l in adjusted_diff_lines[-5:]]:
+                        match = re.match(r"@@ -(\d+),(\d+) \+(\d+),(\d+) @@", hunk_header)
+                        if match:
+                            new_source_start = current_file_line - len([l for l in adjusted_diff_lines[-5:] if l.startswith(' ')]) + 1
+                            new_source_length = len([l for l in adjusted_diff_lines[-5:] if l.startswith((' ', '-'))])
+                            new_target_length = len([l for l in adjusted_diff_lines[-5:] if l.startswith((' ', '+'))])
+                            hunk_header = hunk_header.replace(
+                                f"-{match.group(1)},{match.group(2)} +{match.group(3)},{match.group(4)}",
+                                f"-{new_source_start},{new_source_length} +{new_source_start},{new_target_length}"
+                            )
+
+            # Add the last header if in hunk
+            if in_hunk:
+                adjusted_diff_lines.append(hunk_header)
+
+            return "\n".join(adjusted_diff_lines)
+
+        except Exception as e:
+            LOGGER.error(f"Error validating and adjusting diff lines: {e}")
+            return diff_content
