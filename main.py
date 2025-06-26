@@ -73,5 +73,4 @@ async def general_exception_handler(request: Request, exc: Exception):
         },
     )
 
-
 app.include_router(CHAT_ASSISTANT_ROUTER, prefix="/api/v1")

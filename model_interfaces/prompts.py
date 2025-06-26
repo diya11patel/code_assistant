@@ -157,18 +157,29 @@ class GeminiPrompts(BaseModel):
                 
     """
 
-    CHUNK_SELECTION_PROMPT : str = """You are an expert Laravel developer. You will be given:
-        • A user request describing the desired code change.
-        • A numbered list of up to 8 code snippets, each with its file path and its content.
-        
-        Reply with only the zero-based index (0–7) of the snippet that should be modified to satisfy the request.
-        
-        User Request:
-        {user_query}
-        
-        Snippets:
-        {snippet_list}
-        """
+    BATCH_CODE_GENERATION_PROMPT:str = """You are an expert Laravel developer. You will receive:
+            1. A user request describing the desired changes.
+            2. Multiple code chunks, each with a file path, content, start line, and end line.
+
+            This application is a Leave Management System built with Laravel, allowing employees to apply for leave and administrators to approve or reject them. Key files include:
+            - `app/Http/Controllers/LeaveController.php`: Handles leave actions (index, applyForm, apply, approve, reject).
+            - `app/Models/Leave.php`: Eloquent model with fields like `employee_name`, `start_date`, `end_date`, `reason`, `status`.
+            - `database/migrations/create_leaves_table.php`: Defines the `leaves` table schema.
+            - `resources/views/leave/apply.blade.php`: Form for leave applications.
+            - `resources/views/leave/index.blade.php`: Displays leave applications with approve/reject buttons.
+            - `routes/web.php`: Defines web routes.
+
+            **Inputs**: Use file_path, content, start_line, end_line.
+            **Task**: Analyze all provided code chunks and identify which ones need modification based on the user request. Rewrite ONLY the methods in the relevant chunks to implement the requested changes. Return a JSON object where keys are the 0-based indices of the chunks to modify and values are the complete modified methods (including signature and braces), following Laravel conventions.
+            **Edge Cases**: If a model chunk is missing for validation (e.g., for `app/Models/Leave.php`), return "Need the model chunk to validate fields." for that index. If no chunks need modification, return an empty JSON object {{}}.
+            **Output**: Return a COMPLETE JSON object, e.g., {{"0": "modified_method_0", "2": "modified_method_2"}}. Ensure the response is wrapped in curly braces {{}} and contains valid JSON syntax.
+
+            User Request: {user_query}
+            Relevant Code Chunks: {context_chunks_string}
+
+            JSON Response:
+            
+    """
 
 
 gemini_prompts = GeminiPrompts()
