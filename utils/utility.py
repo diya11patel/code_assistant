@@ -1,5 +1,6 @@
 # Determine the file type based on its path
 from pathlib import Path
+import re
 from utils.logger import LOGGER
 
 def get_file_type(file_path_str : str) -> str:
@@ -79,3 +80,16 @@ def get_file_type(file_path_str : str) -> str:
             else:
                 LOGGER.warning(f"Could not determine file type for {file_path_str}. Defaulting to 'unknown'.")
                 return "unknown" # Ensure a string is returned for consistency
+            
+
+
+def normalize_line(line: str):
+        line = line.replace('\t', '    ')             # Convert tabs to spaces
+        line = re.sub(r'\s*\{', ' {', line)           # Collapse spaces before {
+        return line.strip()
+
+def normalize_lines(lines: list[str]) -> list[str]:
+    """
+    Normalizes a list of lines by applying the same normalization as normalize_line to each line.
+    """
+    return [normalize_line(line) for line in lines]
