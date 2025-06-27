@@ -147,7 +147,6 @@ class GeminiModel:
             raise RuntimeError("Gemini model not initialized.")
         
         context_chunks_string = ""
-        import pdb;pdb.set_trace()
         for i, chunk_info in enumerate(context_chunks):
             context_chunks_string += f"--- Chunk {i+1} ---\n"
             context_chunks_string += f"File: {chunk_info.get('file_path', 'N/A')}\n"

@@ -488,7 +488,6 @@ class ChatAssistantService():
 
         # 2. Concatenate with adjacent chunks
         code_chunks_for_llm = self.vector_store.get_concatenated_adjacent_chunks(similar_chunks_payloads)
-        import pdb;pdb.set_trace()
         if not code_chunks_for_llm:
             return {"status": "info", "message": "No concatenated chunks available for diff generation."}
 
@@ -554,7 +553,7 @@ class ChatAssistantService():
         query_embedding = query_embedding_list[0]
         LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
         similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) 
-        
+
     # original repair dff
     def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
@@ -639,7 +638,6 @@ class ChatAssistantService():
 
     def apply_diff_with_patch_command(self, diff_content: str, project_root: str) -> List[Dict[str, Any]]:
         diff_path = os.path.join(project_root, "temp_patch.diff")
-        import pdb;pdb.set_trace()
         with open(diff_path, "w", encoding="utf-8") as f:
             f.write(diff_content)
       
@@ -910,7 +908,6 @@ class ChatAssistantService():
             current_file_line = 0
             in_hunk = False
             hunk_header = ""
-            import pdb; pdb.set_trace()
             for line in diff_content.splitlines():
                 if line.startswith("@@"):
                     if in_hunk:
