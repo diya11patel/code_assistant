@@ -180,6 +180,18 @@ class GeminiPrompts(BaseModel):
             JSON Response:
             
     """
+    CHUNK_SELECTION_PROMPT : str = """You are an expert Laravel developer. You will be given:
+        • A user request describing the desired code change.
+        • A numbered list of up to 8 code snippets, each with its file path and its content.
+        
+        Reply with only the zero-based index (0–7) of the snippet that should be modified to satisfy the request.
+        
+        User Request:
+        {user_query}
+        
+        Snippets:
+        {snippet_list}
+        """
 
 
 gemini_prompts = GeminiPrompts()

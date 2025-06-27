@@ -32,12 +32,24 @@ class ChatAssistantService():
         except Exception as e: 
             LOGGER.info(f"Failed to initialize Gemini Model: {e}. LLM features will be unavailable.")
             self.llm_model = None
-        self.php_processor = LaravelProcessor()
-
+        self.php_processor = LaravelProcessor()  # Initialize once to reuse
 
     async def process_uploaded_zip(self, zip_file: UploadFile, description: str) -> list[str]:
+        """
+        Handles the end-to-end process of receiving a zip file,
+        saving, extracting, and initiating processing (parsing, embedding, storage).
+
+        Args:
+            zip_file (UploadFile): The uploaded zip file.
+            description (str): Description of the codebase.
+
+        Returns:
+            list[str]: A list of file paths that were extracted.
+
+        """
         LOGGER.info("Started codebase Processing")
-        project_path = self.save_uploaded_zip(zip_file, description)
+        # project_path = r"D:/codes/langGraph_venv/code_assistant/temp_code_uploads/leave-management-laravel"
+        project_path =  self.save_uploaded_zip(zip_file, description)
         result = await self.process_codebase(project_path, description)
         return True
 
@@ -157,6 +169,7 @@ class ChatAssistantService():
         else:
             LOGGER.info("LLM model not available for query pre-processing.")
 
+        # --- Semantic Search with processed_query_for_search ---
         LOGGER.info(f"Embedding processed query for search: '{processed_query_for_search}'")
         query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
 
@@ -193,10 +206,10 @@ class ChatAssistantService():
         
         final_llm_answer: LLMQueryResponse
         if self.llm_model:
-            if code_chunks_for_llm:
+            if code_chunks_for_llm: # If chunks were found
                 LOGGER.info(f"Sending original query {original_user_query} and {len(code_chunks_for_llm)} chunks to LLM for final answer...")
                 final_llm_answer = self.llm_model.generate_response(user_query=original_user_query, context_chunks=code_chunks_for_llm)
-            else:
+            else: # No relevant chunks found after search
                 LOGGER.info(f"No relevant chunks found. Sending original query {original_user_query} to LLM without specific context chunks.")
                 final_llm_answer = self.llm_model.generate_response(user_query=original_user_query, context_chunks=[])
         elif not self.llm_model:
@@ -218,24 +231,45 @@ class ChatAssistantService():
             relevant_chunks_found=len(retrieved_chunk_responses)
         )
 
-# approach 1 by replacing the code
-
+    #new method for qdrant updation 
     def overwrite_chunk_in_file(self, file_path: str, start_line: int, end_line: int, new_content: str, project_root: str) -> Dict[str, Any]:
+        """
+        Overwrites a specific chunk in a file between start_line and end_line with new_content.
+
+        Args:
+            file_path (str): Relative path to the file (e.g., 'app/Http/Controllers/LeaveController.php').
+            start_line (int): Starting line number of the chunk (1-based).
+            end_line (int): Ending line number of the chunk (1-based).
+            new_content (str): The new content to write.
+            project_root (str): The root directory of the project.
+
+        Returns:
+            Dict[str, Any]: Result of the operation with status and message.
+        """
+
         try:
+            # Read the original file
+            
             with open(file_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
 
+            # Validate line numbers (convert to 0-based indexing for Python)
             if start_line < 1 or end_line > len(lines) or start_line > end_line:
                 return {"status": "error", "message": f"Invalid line range: start_line={start_line}, end_line={end_line}, file_lines={len(lines)}"}
 
+            # Replace the chunk (start_line and end_line are 1-based, so adjust for 0-based indexing)
             start_idx = start_line - 1
-            end_idx = end_line
+            end_idx = end_line  # end_line is inclusive in the chunk, exclusive in slice
+            # Split new_content into lines, ensuring it ends with a newline
             new_lines = new_content.strip().splitlines(keepends=False)
             new_lines = [line + "\n" for line in new_lines]
-            original_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip()) if start_idx < len(lines) else 0
+            # Adjust indentation to match the first line of the original chunk
+            original_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip())
             new_lines = [" " * original_indent + line.lstrip() for line in new_lines]
+            # Replace the lines
             lines[start_idx:end_idx] = new_lines
 
+            # Write the modified content back to the file
             with open(file_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
 
@@ -245,12 +279,26 @@ class ChatAssistantService():
             return {"status": "error", "message": f"Failed to overwrite chunk in {file_path}: {str(e)}"}
 
     def update_qdrant_after_file_change(self, file_path: str) -> Dict[str, Any]:
+        """
+        Updates the Qdrant database with new chunks after a file has been modified.
+
+        Args:
+            file_path (str): The relative path to the modified file.
+
+        Returns:
+            Dict[str, Any]: Result of the update operation.
+        """
         try:
+            # Since LaravelProcessor works on directories, we'll need to trick it into processing a single file
+            # We'll use the appropriate method based on the file type
+            
             file_path_obj = Path(file_path)
             file_type = get_file_type(file_path)
 
+            # Clear existing chunks in the processor to avoid appending duplicates
             self.php_processor.chunks = []
 
+            # Parse the single file
             if file_type == "blade_template":
                 self.php_processor._parse_blade_file(file_path_obj)
             elif file_type == "route":
@@ -265,6 +313,7 @@ class ChatAssistantService():
                 LOGGER.warning(f"No new chunks generated for {file_path}. Qdrant not updated.")
                 return {"status": "warning", "message": f"No new chunks generated for {file_path}"}
 
+            # Step 2: Generate new embeddings
             contents_to_embed = [chunk.content for chunk in new_chunks]
             embeddings = self.embedding_model.embed_chunks(contents_to_embed)
 
@@ -272,11 +321,13 @@ class ChatAssistantService():
                 LOGGER.error(f"Embedding failed or mismatch. Expected {len(new_chunks)} embeddings, got {len(embeddings) if embeddings else 0}.")
                 return {"status": "error", "message": "Failed to generate embeddings for new chunks"}
 
+            # Step 3: Delete old chunks from Qdrant
             success = self.vector_store.delete_chunks_by_file_path(file_path)
             if not success:
                 LOGGER.error(f"Failed to delete old chunks for {file_path} from Qdrant.")
                 return {"status": "error", "message": f"Failed to delete old chunks for {file_path} from Qdrant"}
 
+            # Step 4: Upsert new chunks to Qdrant
             payloads = [chunk.model_dump() for chunk in new_chunks]
             success = self.vector_store.save_embeddings(embeddings, payloads)
             if not success:
@@ -479,8 +530,7 @@ class ChatAssistantService():
 
             # This catch is for errors *before* the patch library starts processing files
             return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
-
-    # original repair dff
+        # restored the original approach function
     def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
@@ -488,6 +538,32 @@ class ChatAssistantService():
         """
         self.current_project_path='/root/code_assistant'
         # self.current_project_path='D:/codes/langGraph_venv/code_assistant'
+        if not self.current_project_path:
+            return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
+
+        # 1. Perform Semantic Search
+        processed_query_for_search = query # Skip analysis for PoC
+        try:
+            query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
+        except Exception as e:
+             return {"status": "error", "message": f"Error generating embedding for the query: {e}"}
+
+        if not query_embedding_list:
+            return {"status": "error", "message": "Could not generate embedding for the query."}
+
+        query_embedding = query_embedding_list[0]
+        LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
+        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) 
+        
+    # original repair dff
+    def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
+        """
+        PoC method to suggest and apply code changes via diff.
+        Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
+        """
+        self.current_project_path='/root/code_assistant/temp_code_uploads/leave-management-laravel'
+        # self.current_project_path='D:/codes/langGraph_venv/code_assistant'
+
         if not self.current_project_path:
             return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
 

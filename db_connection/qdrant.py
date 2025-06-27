@@ -153,7 +153,7 @@ class QdrantDBManager:
     def search_similar_chunks(
         self,
         embedding: List[float],
-        limit: int = 5,
+        limit: int = 8,
         score_threshold: float = None
     ) -> List[Dict[str, Any]]:
         """
