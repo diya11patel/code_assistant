@@ -530,31 +530,9 @@ class ChatAssistantService():
             # This catch is for errors *before* the patch library starts processing files
             return {"status": "error", "message": f"An unexpected error occurred before applying diff: {e}", "diff": diff_output}
         # restored the original approach function
-    def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
-        """
-        PoC method to suggest and apply code changes via diff.
-        Skips LLM analysis type check and directly performs search -> diff generation -> diff application.
-        """
-        self.current_project_path='/root/code_assistant'
-        # self.current_project_path='D:/codes/langGraph_venv/code_assistant'
-        if not self.current_project_path:
-            return {"status": "error", "message": "No codebase has been uploaded yet. Please upload a zip file first."}
-
-        # 1. Perform Semantic Search
-        processed_query_for_search = query # Skip analysis for PoC
-        try:
-            query_embedding_list = self.embedding_model.embed_chunks([processed_query_for_search])
-        except Exception as e:
-             return {"status": "error", "message": f"Error generating embedding for the query: {e}"}
-
-        if not query_embedding_list:
-            return {"status": "error", "message": "Could not generate embedding for the query."}
-
-        query_embedding = query_embedding_list[0]
-        LOGGER.info(f"Searching Qdrant for top chunks for update query: '{processed_query_for_search}'")
-        similar_chunks_payloads = self.vector_store.search_similar_chunks(embedding=query_embedding, limit=5) 
 
     # original repair dff
+
     def suggest_and_apply_code_update(self, query: str) -> Dict[str, Any]:
         """
         PoC method to suggest and apply code changes via diff.
