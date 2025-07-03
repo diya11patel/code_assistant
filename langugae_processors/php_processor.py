@@ -12,7 +12,7 @@ from utils.logger import LOGGER
 
 
 class LaravelProcessor:
-    def __init__(self):
+    def __init__(self, root_path: str = None):
         # Initialize parsers
 
         # self.js_parser = Parser()
@@ -28,200 +28,99 @@ class LaravelProcessor:
         # self.php_parser.set_language(PHP_LANGUAGE)
         # self.js_parser.set_language(JS_LANGUAGE)
         # self.html_parser.set_language(HTML_LANGUAGE)
-
+        self.root_path = root_path
         self.chunks: List[CodeChunk] = []
 
     def analyze_codebase(self, laravel_root: str) -> List[CodeChunk]:
-        """Analyze entire Laravel codebase and return chunks"""
-        laravel_path = Path(laravel_root)
-        # Analyze different Laravel directories
-        self._analyze_controllers(laravel_path / "app/Http/Controllers")
-        self._analyze_models(laravel_path / "app/Models")
-        self._analyze_routes(laravel_path / "routes")
-        self._analyze_migrations(laravel_path / "database/migrations")
-        self._analyze_seeders(laravel_path / "database/seeders")
-        self._analyze_factories(laravel_path / "database/factories")
-        self._analyze_views(laravel_path / "resources/views")
-        self._analyze_middleware(laravel_path / "app/Http/Middleware")
-        self._analyze_requests(laravel_path / "app/Http/Requests")
-        self._analyze_services(laravel_path / "app/Services")
-        self._analyze_config(laravel_path / "config")
-        self._analyze_providers(laravel_path / "app/Providers")
-        self._analyze_commands(laravel_path / "app/Console/Commands")
-        self._analyze_events(laravel_path / "app/Events")
-        self._analyze_listeners(laravel_path / "app/Listeners")
-        self._analyze_jobs(laravel_path / "app/Jobs")
-        self._analyze_notifications(laravel_path / "app/Notifications")
-        self._analyze_rules(laravel_path / "app/Rules")
-        self._analyze_exceptions_handler(laravel_path / "app/Exceptions/Handler.php")
-        self._analyze_custom_helpers(laravel_path / "app/Helpers") # Assuming a common custom location
-        self._analyze_bootstrap_app(laravel_path / "bootstrap/app.php")
-        self._analyze_public_index(laravel_path / "public/index.php")
-        self._analyze_tests(laravel_path / "tests")
-        
+        """Analyze the codebase by traversing folders and routing files based on folder names."""
+        self.root_path = laravel_root
+        self.chunks = []
+
+        # Dictionary to map folder names to parser methods
+        folder_parsers = {
+            "routes": self._parse_route_folder,
+            "config": self._parse_config_folder,
+            "env": self._parse_env_folder,  # For .env files
+            "views": self._parse_blade_folder
+        }
+
+        # Traverse folders
+        for root, dirs, files in os.walk(laravel_root, topdown=True):
+            relative_path = os.path.relpath(root, laravel_root)
+            folder_names = relative_path.split(os.sep)
+
+            # Skip excluded directories
+            if any(excluded in root for excluded in {
+                ".git", "__pycache__", "node_modules", "vendor",
+                "storage/framework", "storage/logs", "storage/app/public",
+                "public/build", "public/hot", "bootstrap/cache", "target",
+                "build", "dist", ".venv", "venv"
+            }) or any(f.startswith('.') for f in folder_names):
+                continue
+            
+            # Determine parser based on any folder name in the path
+            parser = None
+            for folder_name in folder_names:
+                if folder_name.lower() in folder_parsers:
+                    parser = folder_parsers[folder_name.lower()]
+                    break
+
+            # Route folder to specific parser if matched
+            if parser:
+                parser(root, files)
+            else:
+                # Fallback: process all .php files in the folder with _parse_php_file
+                php_files = [f for f in files if f.endswith(('.php', '.blade.php'))]
+                if php_files:
+                    self._parse_php_folder(root, php_files)
+
         return self.chunks
 
-    def _analyze_controllers(self, controllers_path: Path):
-        """Analyze Laravel controllers"""
-        if not controllers_path.exists():
-            return
+    def _parse_route_folder(self, folder_path: str, files: list[str]):
+        """Parse all route files in the folder."""
+        for file_name in files:
+            if file_name.endswith('.php'):
+                file_path = os.path.join(folder_path, file_name)
+                self._parse_route_file(Path(file_path))
 
-        for php_file in controllers_path.rglob("*.php"):
-            self._parse_php_file(php_file, "controller")
+    def _parse_config_folder(self, folder_path: str, files: list[str]):
+        """Parse all config files in the folder."""
+        for file_name in files:
+            if file_name.endswith('.php'):
+                file_path = os.path.join(folder_path, file_name)
+                self._parse_config_file(Path(file_path))
 
-    def _analyze_models(self, models_path: Path):
-        """Analyze Eloquent models"""
-        if not models_path.exists():
-            return
+    def _parse_env_folder(self, folder_path: str, files: list[str]):
+        """Parse .env file in the folder."""
+        env_file = next((f for f in files if f == '.env'), None)
+        if env_file:
+            file_path = os.path.join(folder_path, env_file)
+            self._parse_env_file(Path(file_path))
 
-        for php_file in models_path.rglob("*.php"):
-            self._parse_php_file(php_file, "model")
+    def _parse_blade_folder(self, folder_path: str, files: list[str]):
+        """Parse all Blade files in the folder."""
+        for file_name in files:
+            if file_name.endswith('.blade.php'):
+                file_path = os.path.join(folder_path, file_name)
+                self._parse_blade_file(Path(file_path))
 
-    def _analyze_routes(self, routes_path: Path):
-        """Analyze route files"""
-        if not routes_path.exists():
-            return
-        for php_file in routes_path.glob("*.php"):
-            self._parse_route_file(php_file)
+    def _parse_php_folder(self, folder_path: str, files: list[str]):
+        """Parse all PHP files in the folder with generic PHP parser."""
+        for file_name in files:
+            file_path = os.path.join(folder_path, file_name)
+            file_type = "php" if file_name.endswith('.php') else "blade_template"
+            self._parse_php_file(Path(file_path), file_type)
 
-    def _analyze_seeders(self, seeders_path: Path):
-        """Analyze database seeders"""
-        if not seeders_path.exists():
-            return
-        for php_file in seeders_path.rglob("*.php"): # rglob for nested seeders
-            self._parse_php_file(php_file, "seeder")
-
-    def _analyze_factories(self, factories_path: Path):
-        """Analyze model factories"""
-        if not factories_path.exists():
-            return
-        for php_file in factories_path.rglob("*.php"): # rglob for nested factories
-            self._parse_php_file(php_file, "factory")
-
-    def _analyze_migrations(self, migrations_path: Path):
-        """Analyze database migrations"""
-        if not migrations_path.exists():
-            return
-
-        for php_file in migrations_path.glob("*.php"):
-            self._parse_php_file(php_file, "migration")
-
-    def _analyze_views(self, views_path: Path):
-        """Analyze Blade templates"""
-        if not views_path.exists():
-            return
-
-        for blade_file in views_path.rglob("*.blade.php"):
-            self._parse_blade_file(blade_file)
-
-    def _analyze_middleware(self, middleware_path: Path):
-        """Analyze middleware classes"""
-        if not middleware_path.exists():
-            return
-
-        for php_file in middleware_path.rglob("*.php"):
-            self._parse_php_file(php_file, "middleware")
-
-    def _analyze_requests(self, requests_path: Path):
-        """Analyze form request validation classes"""
-        if not requests_path.exists():
-            return
-
-        for php_file in requests_path.rglob("*.php"):
-            self._parse_php_file(php_file, "form_request")
-
-    def _analyze_services(self, services_path: Path):
-        """Analyze service classes"""
-        if not services_path.exists():
-            return
-
-        for php_file in services_path.rglob("*.php"):
-            self._parse_php_file(php_file, "service")
-
-    def _analyze_config(self, config_path: Path):
-        """Analyze configuration files"""
-        if not config_path.exists():
-            return
-
-        for php_file in config_path.glob("*.php"):
-            self._parse_php_file(php_file, "config")
-
-    def _analyze_providers(self, providers_path: Path):
-        """Analyze service providers"""
-        if not providers_path.exists():
-            return
-        for php_file in providers_path.rglob("*.php"):
-            self._parse_php_file(php_file, "provider")
-
-    def _analyze_commands(self, commands_path: Path):
-        """Analyze Artisan console commands"""
-        if not commands_path.exists():
-            return
-        for php_file in commands_path.rglob("*.php"):
-            self._parse_php_file(php_file, "command")
-
-    def _analyze_events(self, events_path: Path):
-        """Analyze event classes"""
-        if not events_path.exists():
-            return
-        for php_file in events_path.rglob("*.php"):
-            self._parse_php_file(php_file, "event")
-
-    def _analyze_listeners(self, listeners_path: Path):
-        """Analyze event listener classes"""
-        if not listeners_path.exists():
-            return
-        for php_file in listeners_path.rglob("*.php"):
-            self._parse_php_file(php_file, "listener")
-
-    def _analyze_jobs(self, jobs_path: Path):
-        """Analyze job classes"""
-        if not jobs_path.exists():
-            return
-        for php_file in jobs_path.rglob("*.php"):
-            self._parse_php_file(php_file, "job")
-
-    def _analyze_notifications(self, notifications_path: Path):
-        """Analyze notification classes"""
-        if not notifications_path.exists():
-            return
-        for php_file in notifications_path.rglob("*.php"):
-            self._parse_php_file(php_file, "notification")
-
-    def _analyze_rules(self, rules_path: Path):
-        """Analyze custom validation rules"""
-        if not rules_path.exists():
-            return
-        for php_file in rules_path.rglob("*.php"):
-            self._parse_php_file(php_file, "validation_rule")
-
-    def _analyze_exceptions_handler(self, handler_file_path: Path):
-        """Analyze the main exception handler file"""
-        if handler_file_path.exists() and handler_file_path.is_file():
-            self._parse_php_file(handler_file_path, "exception_handler")
-
-    def _analyze_custom_helpers(self, helpers_path: Path):
-        """Analyze custom helper files (if any)"""
-        if not helpers_path.exists() or not helpers_path.is_dir():
-            return
-        for php_file in helpers_path.rglob("*.php"):
-            self._parse_php_file(php_file, "helper")
-
-    def _analyze_bootstrap_app(self, bootstrap_file_path: Path):
-        if bootstrap_file_path.exists() and bootstrap_file_path.is_file():
-            self._parse_php_file(bootstrap_file_path, "bootstrap_script")
-
-    def _analyze_public_index(self, index_file_path: Path):
-        if index_file_path.exists() and index_file_path.is_file():
-            self._parse_php_file(index_file_path, "public_entry_script")
-
-    def _analyze_tests(self, tests_path: Path):
-        """Analyze PHPUnit test files"""
-        if not tests_path.exists():
-            return
-        # Tests can be in subdirectories like Unit, Feature
-        for php_file in tests_path.rglob("*.php"):
-            self._parse_php_file(php_file, "test")
+    def _get_file_type(self, file_path: str) -> str:
+        """Determine file type based on extension."""
+        _, ext = os.path.splitext(file_path)
+        if ext == ".php":
+            return "php"
+        elif ext == ".blade.php":
+            return "blade_template"
+        elif ext == ".env":
+            return "env"
+        return ext.lstrip('.')
 
     def _parse_php_file(self, file_path: Path, file_type: str):
         """Parse a PHP file and extract meaningful chunks"""
@@ -269,7 +168,7 @@ class LaravelProcessor:
                 self.chunks.append(method_chunk)
 
     def _parse_route_file(self, file_path: Path):
-        """Parse Laravel route files"""
+        """Parse Laravel route files with detailed route structure."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
@@ -277,45 +176,170 @@ class LaravelProcessor:
             return
 
         tree = self.php_parser.parse(bytes(content, 'utf8'))
+        routes = self._find_route_definitions(tree.root_node, content)
 
-        # Look for Route:: method calls
-        route_calls = self._find_route_definitions(tree.root_node, content)
+        import re
+        for i, route_call in enumerate(routes):
+            # Extract route details
+            route_text = route_call['content']
+            metadata = route_call['metadata'].copy()
+            start_line = route_call['start_line']
+            end_line = route_call['end_line']
 
-        for i, route_call in enumerate(route_calls):
+            # Attempt to parse route method (e.g., get, post) and URI
+            method_match = re.search(r'Route::(\w+)\s*\(\s*[\'"]', route_text)
+            uri_match = re.search(r'[\'"]((?:[^\'"]|\\.)*)[\'"]', route_text)
+            controller_match = re.search(r'[\'"]((?:[^\'"]|\\.)*)@[\w]+[\'"]', route_text)
+
+            metadata['method'] = method_match.group(1) if method_match else 'unknown'
+            metadata['uri'] = uri_match.group(1) if uri_match else 'unknown'
+            metadata['controller'] = controller_match.group(1) if controller_match else 'unknown'
+
             chunk = CodeChunk(
                 type="route",
-                name=f"Route_{i + 1}",
+                name=f"Route_{metadata['method']}_{metadata['uri'].replace('/', '_')}_{i + 1}",
                 file_path=str(file_path),
-                start_line=route_call['start_line'],
-                end_line=route_call['end_line'],
-                content=route_call['content'],
-                metadata=route_call['metadata'],
-                import_dependencies=[],
+                start_line=start_line,
+                end_line=end_line,
+                content=route_text,
+                metadata=metadata,
+                import_dependencies=self._extract_route_dependencies(route_text),
                 method_dependencies=[]
-                #TODO: need to look into router dependencies
             )
             self.chunks.append(chunk)
 
-    def _parse_blade_file(self, file_path: Path):
-        """Parse Blade template files"""
+    def _parse_config_file(self, file_path: Path):
+        """Parse Laravel config files (e.g., PHP arrays or key-value pairs)"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
         except UnicodeDecodeError:
             return
 
-        # For Blade files, we'll chunk by sections or components
-        # This is a simplified approach - you might want more sophisticated parsing
+        # Simple parsing for config files (assumes PHP return array syntax)
+        tree = self.php_parser.parse(bytes(content, 'utf8'))
+        root_node = tree.root_node
+
+        # Look for return statements with arrays
+        return_nodes = self._query_nodes(root_node, "return_statement")
+        for return_node in return_nodes:
+            array_node = next((child for child in return_node.children if child.type == "array_creation_expression"), None)
+            if array_node:
+                chunk = CodeChunk(
+                    type="config",
+                    name=os.path.basename(file_path),
+                    file_path=str(file_path),
+                    start_line=array_node.start_point[0] + 1,
+                    end_line=array_node.end_point[0] + 1,
+                    content=self._get_node_text(array_node, content),
+                    metadata={"config_file": True},
+                    import_dependencies=[],
+                    method_dependencies=[]
+                )
+                self.chunks.append(chunk)
+            else:
+                # Fallback: treat entire file as a chunk if no array found
+                chunk = CodeChunk(
+                    type="config",
+                    name=os.path.basename(file_path),
+                    file_path=str(file_path),
+                    start_line=1,
+                    end_line=content.count('\n') + 1,
+                    content=content,
+                    metadata={"config_file": True},
+                    import_dependencies=[],
+                    method_dependencies=[]
+                )
+                self.chunks.append(chunk)
+
+    def _parse_env_file(self, file_path: Path):
+        """Parse .env files (key-value pairs)"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            return
+
+        # Parse key-value pairs (e.g., KEY=VALUE)
+        lines = content.splitlines()
+        current_line = 1
+        current_content = []
+
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('#'):  # Ignore comments and empty lines
+                current_content.append(line)
+            if line or current_content:  # Create chunk when line ends or at EOF
+                chunk = CodeChunk(
+                    type="env",
+                    name=f"Env_{os.path.basename(file_path)}_{current_line}",
+                    file_path=str(file_path),
+                    start_line=current_line,
+                    end_line=current_line,
+                    content=line if line else "\n".join(current_content),
+                    metadata={"env_variable": True},
+                    import_dependencies=[],
+                    method_dependencies=[]
+                )
+                self.chunks.append(chunk)
+                current_line += 1
+                current_content = []
+
+
+    def _parse_blade_file(self, file_path: Path):
+        """Parse Blade template files with section-based chunking."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            return
+
+        import re
+        lines = content.splitlines()
+        current_section = []
+        current_start_line = 1
+        section_pattern = re.compile(r'@section\s*\(\s*[\'"](\w+)[\'"]\s*\)|@component\s*\(\s*[\'"](\w+)[\'"]\s*\)')
+
+        for i, line in enumerate(lines, 1):
+            match = section_pattern.search(line)
+            if match:
+                # End previous section if exists
+                if current_section:
+                    self._create_blade_chunk(file_path, current_section, current_start_line, i - 1)
+                    current_section = []
+                current_start_line = i
+            current_section.append(line)
+
+        # Handle the last section or entire file if no sections
+        if current_section:
+            self._create_blade_chunk(file_path, current_section, current_start_line, len(lines))
+
+    def _create_blade_chunk(self, file_path: Path, lines: List[str], start_line: int, end_line: int):
+        import re
+        content = "\n".join(lines)
+        base_name = os.path.basename(file_path).replace('.blade.php', '')
+        section_match = re.search(r'@section\s*\(\s*[\'"](\w+)[\'"]\s*\)', content)
+        component_match = re.search(r'@component\s*\(\s*[\'"](\w+)[\'"]\s*\)', content)
+
+        if section_match:
+            name = f"{base_name}_blade_{section_match.group(1)}"
+        elif component_match:
+            name = f"{base_name}_blade_{component_match.group(1)}"
+        else:
+            name = f"{base_name}_blade_default_{start_line}"
+
+        metadata = self._extract_blade_metadata(content)
+        dependencies = self._extract_blade_dependencies(content)
 
         chunk = CodeChunk(
             type="blade_template",
-            name=file_path.stem,
+            name=name,
             file_path=str(file_path),
-            start_line=1,
-            end_line=len(content.splitlines()),
+            start_line=start_line,
+            end_line=end_line,
             content=content,
-            metadata=self._extract_blade_metadata(content),
-            import_dependencies=self._extract_blade_dependencies(content),
+            metadata=metadata,
+            import_dependencies=dependencies,
             method_dependencies=[]
         )
         self.chunks.append(chunk)
@@ -495,6 +519,20 @@ class LaravelProcessor:
                 })
 
         return routes
+
+    def _extract_route_dependencies(self, route_text: str) -> List[str]:
+        """Extract dependencies from route definitions (e.g., controllers, middleware)."""
+        dependencies = []
+        import re
+        # Match controller classes (e.g., 'App\Http\Controllers\HomeController@index')
+        controller_match = re.search(r'[\'"](\w+\\[\w\\]+)@[\w]+[\'"]', route_text)
+        if controller_match:
+            dependencies.append(controller_match.group(1))
+        # Match middleware (e.g., 'middleware' => ['auth'])
+        middleware_match = re.search(r'middleware\s*=>\s*[\'"](\w+(?:\\?\w+)*)[\'"]', route_text)
+        if middleware_match:
+            dependencies.append(middleware_match.group(1))
+        return dependencies
 
     def _extract_blade_metadata(self, content: str) -> Dict[str, Any]:
         """Extract metadata from Blade templates"""

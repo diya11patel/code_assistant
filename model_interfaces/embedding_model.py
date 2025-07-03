@@ -2,57 +2,73 @@ from sentence_transformers import SentenceTransformer
 from typing import List
 import logging
 from utils.logger import LOGGER
-
 import torch
-
+import torch.multiprocessing as mp
+import numpy as np
+import os
+import time  # Added missing import
 
 class EmbeddingModel:
     """
-    A wrapper class for handling sentence embedding models.
-    This class initializes a pre-trained model and provides
-    methods to generate embeddings for text.
+    A wrapper class for handling sentence embedding models with parallel batch processing.
     """
-    def __init__(self):
+    def __init__(self, batch_size: int = 5, num_workers: int = None):
         """
         Initializes the EmbeddingModel.
 
         Args:
-            model_name (str): The name of the pre-trained sentence transformer model to use.
+            batch_size (int): Number of chunks to process in each batch (default: 32).
+            num_workers (int): Number of parallel processes (default: CPU count).
         """
         self.model_name = "BAAI/bge-code-v1"
+        self.batch_size = batch_size
+        self.num_workers = num_workers if num_workers else mp.cpu_count()
         self.model = None
+        self.device = "cpu"  # Explicitly set to CPU
         self._load_model()
- 
+
     def _load_model(self):
         """
-        Loads the pre-trained sentence transformer model.
-        Handles potential errors during model loading.
+        Loads the pre-trained sentence transformer model on CPU.
         """
         try:
-            LOGGER.info(f"Loading embedding model: {self.model_name}...")
+            LOGGER.info(f"Loading embedding model: {self.model_name} on {self.device}...")
             self.model = SentenceTransformer(
-                        self.model_name,
-                        trust_remote_code=True,
-                        model_kwargs={"torch_dtype": torch.float16},
-                    ) 
-            LOGGER.info(f"Embedding model '{self.model_name}' loaded successfully.")
+                self.model_name,
+                trust_remote_code=True,
+                model_kwargs={"torch_dtype": torch.float16},
+                device=self.device
+            )
+            LOGGER.info(f"Embedding model '{self.model_name}' loaded successfully on {self.device}.")
         except Exception as e:
             LOGGER.error(f"Failed to load embedding model '{self.model_name}': {e}")
-            # Depending on the application's needs, you might want to re-raise the exception
-            # or handle it in a way that allows the application to continue with limited functionality.
             raise RuntimeError(f"Could not initialize embedding model: {e}")
 
-    def embed_chunks(self, text_chunks: List[str], batch_size: int = 10) -> List[List[float]]:
+    def _process_batch(self, batch):
         """
-        Generates embeddings for a list of text chunks.
+        Processes a batch of text chunks to generate embeddings in a separate process.
+
+        Args:
+            batch (List[str]): A batch of text strings to embed.
+
+        Returns:
+            List[List[float]]: A list of embeddings for the batch.
+        """
+        LOGGER.debug(f"Process {os.getpid()} processing batch of size {len(batch)} on CPU...")
+        with torch.no_grad():
+            batch_embeddings_np = self.model.encode(batch, show_progress_bar=False)
+            return [embedding.tolist() for embedding in batch_embeddings_np]
+
+    def embed_chunks(self, text_chunks: List[str]) -> List[List[float]]:
+        """
+        Generates embeddings for a list of text chunks using parallel batch processing.
 
         Args:
             text_chunks (List[str]): A list of text strings to embed.
-            batch_size (int): The number of chunks to process in each batch.
 
         Returns:
             List[List[float]]: A list of embeddings, where each embedding is a list of floats.
-                               Returns an empty list if the input is empty or the model is not loaded.
+                               Returns an empty list if the input is empty or model is not loaded.
         """
         if not self.model:
             LOGGER.error("Embedding model is not loaded. Cannot generate embeddings.")
@@ -64,22 +80,30 @@ class EmbeddingModel:
 
         try:
             all_embeddings = []
-            LOGGER.info(f"Generating embeddings for {len(text_chunks)} chunks in batches of {batch_size}...")
-            
-            for i in range(0, len(text_chunks), batch_size):
-                batch = text_chunks[i:i + batch_size]
-                LOGGER.info(f"Processing batch {i // batch_size + 1}/{(len(text_chunks) + batch_size - 1) // batch_size}...")
-                batch_embeddings_np = self.model.encode(batch, show_progress_bar=True) # Progress bar per batch might be too verbose
-                
-                # Convert numpy arrays to lists of floats for each embedding in the batch
-                batch_embeddings_list = [embedding.tolist() for embedding in batch_embeddings_np]
-                all_embeddings.extend(batch_embeddings_list)
+            LOGGER.info(f"Generating embeddings for {len(text_chunks)} chunks in batches of {self.batch_size}...")
+            start_time = time.time()  # Now defined due to import
 
-            LOGGER.info("Embeddings generated successfully.")
+            # Split chunks into batches
+            batches = [text_chunks[i:i + self.batch_size] for i in range(0, len(text_chunks), self.batch_size)]
+            num_batches = len(batches)
+
+            # Use multiprocessing with spawn context for multiple batches
+            if num_batches > 1:
+                mp.set_start_method('spawn', force=True)
+                with mp.Pool(processes=min(self.num_workers, num_batches)) as pool:
+                    all_embeddings = pool.map(self._process_batch, batches)
+            else:
+                LOGGER.info("Single batch detected, processing sequentially...")
+                all_embeddings = [self._process_batch(batches[0])]
+
+            # Flatten the list of lists
+            all_embeddings = [item for sublist in all_embeddings for item in sublist]
+
+            LOGGER.info(f"Embeddings generated successfully in {time.time() - start_time:.2f} seconds.")
             return all_embeddings
         except Exception as e:
             LOGGER.error(f"Error during embedding generation: {e}")
-            return [] # Or re-raise, depending on desired error handling
+            return []
 
     def get_embedding_dimension(self) -> int:
         """
